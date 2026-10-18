@@ -7,6 +7,9 @@
 #   auto        entries execute automatically within all global limits
 #   paused      every new signal is rejected
 #
+# paper_only_strategies: optional list. In MODE=live, entries with these strategies are
+# simulated (shadow) whatever the status. No effect in MODE=paper.
+#
 # api_key_sha256: only needed for the HTTP transport. Create with `ibtrader new-key`;
 # give the producer the key, store only the hash here.
 producers:
@@ -16,6 +19,12 @@ producers:
     rate_limit_per_hour: 30
     description: "Daily momentum screener"
     # api_key_sha256: "<64 hex chars>"
+  social-momentum:
+    status: paper_only
+    budget_usd: 80
+    rate_limit_per_hour: 10
+    description: "WSB/X attention, debit verticals (docs/strategy/social-momentum-options.md)"
+    paper_only_strategies: [bear_put_spread]  # Setup B stays on paper for the first 3 months
   macro-agent:
     status: manual
     budget_usd: 400

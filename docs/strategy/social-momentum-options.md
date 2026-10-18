@@ -2,13 +2,14 @@
 
 | | |
 |---|---|
-| Status | **DRAFT v0.3** — owner decisions of 2026-10-18 incorporated; not yet validated on paper, not for live trading |
+| Status | **DRAFT v0.4** — owner decisions of 2026-10-18 incorporated; not yet validated on paper, not for live trading |
 | Owner | Sergej Samokhin |
 | Date | 2026-10-18 |
 | Scope | One upstream producer (`social-momentum`) that emits signals under Signal Contract 1.0 |
 | Capital | **Monthly loss limit €100** (net, per calendar month). Data and tool costs are budgeted separately (section 8). |
 | Changes v0.2 | €100 confirmed as monthly loss limit; data costs on top; data sourcing reworked (Apify / Firecrawl / X API compared, section 3.1 and 8) |
 | Changes v0.3 | Scraping terms-of-service risk accepted; running costs capped at USD 50/month (section 8 reworked); margin account confirmed; monthly loss limit now enforced by the risk engine (`MAX_MONTHLY_LOSS_USD`) |
+| Changes v0.4 | Weekly entry cap in the risk engine (`MAX_ENTRIES_PER_WEEK`); time stop as signal field `exit.max_holding_days`; Setup B kept on paper by `paper_only_strategies` in the producer registry; earnings/ex-dividend filter stays with the producer (owner decision) |
 
 > This is a strategy design, not investment advice. Options can lose 100 % of the premium paid.
 > Social-media-driven stocks are among the most volatile and most manipulated instruments in the
@@ -29,7 +30,8 @@
 4. **Contract:** 21–45 days to expiry, long leg ~0.50 delta, short leg ~0.25 delta.
 5. **Size:** max **USD 40** debit per position (= max loss), **1 contract**, max **2** open positions.
 6. **Exits:** take profit **+75 %** of debit, stop loss **−50 %**, close **7 days** before expiry,
-   thesis exits (attention collapse, sentiment flip, 10 trading days without progress).
+   time stop after 10 trading days (`exit.max_holding_days`), thesis exits (attention collapse,
+   sentiment flip).
 7. **Monthly loss limit €100 (≈ USD 115):** when the month's net realised P&L minus the max loss
    of open positions reaches −USD 115, no new entries until the next month. The month can
    therefore never lose more than €100 from trading. Enforced by the risk engine
@@ -116,6 +118,7 @@ rate; the system works in USD).
 | `MAX_OPEN_POSITIONS` | 2 | |
 | `MAX_DAILY_LOSS_USD` | 40 | |
 | `MAX_MONTHLY_LOSS_USD` | 115 | Net realised P&L of the month minus all premium at risk; rule `monthly_loss_limit` (added in v0.3) |
+| `MAX_ENTRIES_PER_WEEK` | 2 | Calendar week Monday–Sunday (New York), all producers; rule `weekly_entry_limit` (added in v0.4) |
 | `MAX_UNDERLYING_EXPOSURE_USD` | 40 | Effectively one position per name |
 | `MIN_OPEN_INTEREST` | 500 | Stricter than default 100: hype names have thin far-OTM strikes |
 | `MAX_BID_ASK_SPREAD_PCT` | 10 | Per leg; with 0.30–1.00 premiums this is already loose in absolute terms |
@@ -123,16 +126,24 @@ rate; the system works in USD).
 | `MIN_CONFIDENCE_AUTO` | 0.6 | Below that, manual approval |
 | `producers.yaml` → `social-momentum.budget_usd` | 80 | |
 | `producers.yaml` → `status` | `paper_only` → later `manual` → `auto` | |
+| `producers.yaml` → `paper_only_strategies` | `[bear_put_spread]` | Setup B stays simulated in live mode for the first 3 months (added in v0.4) |
+| Signal → `exit.max_holding_days` | 10 | Time stop in NYSE sessions after the entry day (added in v0.4) |
 
-**Gaps in the current system** (need to be handled by the producer or by a code change; see
-section 10):
+**Coverage in the current system** (see section 10):
 
 - The **monthly loss limit** is enforced by the risk engine (`MAX_MONTHLY_LOSS_USD`, since v0.3).
   It counts all producers on the account and uses the entry price of open positions as their
   maximum loss; commissions are not included, so keep a few dollars of headroom in mind.
-- There is **no weekly entry cap** in `RiskLimits`. The producer must enforce it.
-- There is **no earnings / ex-dividend calendar** in the system. The producer must filter these.
-- There is **no "max holding days" exit**. Time-based thesis exits must be sent as `exit` signals.
+- The **weekly entry cap** is enforced by the risk engine (`MAX_ENTRIES_PER_WEEK`, since v0.4).
+  It counts all producers on the account; real and simulated (shadow) entries are counted
+  separately, so a shadow Setup B entry does not use up the live cap. An entry counts from risk approval on, unless it ends
+  rejected, expired or cancelled without a fill; an unfilled order therefore does not use up the
+  week. The producer-side cap in section 3.7 stays as a second line.
+- The **time stop** is a signal field (`exit.max_holding_days`, since v0.4), checked by the position
+  monitor like take profit and stop loss. It fires at the first check of the session on which the
+  count is reached, which can be right after the open.
+- There is **no earnings / ex-dividend calendar** in the system. **Owner decision (2026-10-18):** the
+  producer filters these before sending a signal (section 3.6).
 
 ---
 
@@ -218,8 +229,10 @@ All conditions must hold:
 | B4 | Price rolling over (checked by `ibtrader`) | `rsi_14 >= 65 and close < ema_5 and close < open` |
 | B5 | Squeeze risk acceptable | Short interest < 25 % of float, not on hard-to-borrow list (producer, data source to be defined) |
 
-Setup B is the riskier one (short squeezes). **Proposal: run B in paper only for the first
-3 months**, even if A goes live.
+Setup B is the riskier one (short squeezes). **Owner decision (2026-10-18): B runs in paper only
+for the first 3 months**, even if A goes live. Enforced by the producer registry entry
+`paper_only_strategies: [bear_put_spread]`: in `MODE=live` these entries are simulated (shadow),
+whatever the producer status.
 
 ### 3.6 Universe filters (both setups)
 
@@ -290,7 +303,7 @@ USD 45 and is rejected. In practice the mid debit must be about USD 0.30–0.35.
 | Take profit | **+75 %** of entry debit (≈ 50 % of max gain for a 0.40 debit / 1.00 width) | `exit.take_profit_pct: 75` |
 | Stop loss | **−50 %** of entry debit (mid-based) | `exit.stop_loss_pct: 50` |
 | Expiry | Close when **≤ 7 days** to expiry, whatever the P&L | `exit.close_before_expiry_days: 7` |
-| Time stop | Close after **10 trading days** if neither TP nor SL was hit | Producer sends `exit` (`action: close`) |
+| Time stop | Close after **10 trading days** if neither TP nor SL was hit | `exit.max_holding_days: 10` (sessions after the entry day) |
 | Thesis broken (A) | `attention_z` falls below 0.5 **or** sentiment turns ≤ 0 **or** close < `sma_20` | Producer sends `exit` |
 | Thesis broken (B) | New price high above the entry-day high **or** attention re-accelerates (`attention_accel ≥ 1.5`) | Producer sends `exit` |
 | Partial profit | Not used (1 contract) | — |
@@ -368,7 +381,7 @@ data.
 |---|---|---|---|
 | 0. Data | 4 weeks | Producer only, no signals sent; log features daily | Baseline for z-scores; manual review of 20 detected tickers for false positives |
 | 1. Paper | ≥ 8 weeks **and** ≥ 30 signals | `MODE=paper`, producer `paper_only` | Hit rate ≥ 50 %, profit factor ≥ 1.3 after trading costs, average profit per trade covers the running costs of section 8, max drawdown ≤ USD 115, ≥ 80 % of entry orders filled within 3 reprices, no unexplained system errors |
-| 2. Live, manual | 4 weeks | `MODE=live`, producer `manual`, Setup A only | Live results within the paper range; slippage vs. mid ≤ 10 % of debit |
+| 2. Live, manual | 4 weeks | `MODE=live`, producer `manual`, Setup A only (Setup B shadow via `paper_only_strategies`) | Live results within the paper range; slippage vs. mid ≤ 10 % of debit |
 | 3. Live, auto | ongoing | producer `auto`, approval threshold restored | Monthly review |
 
 **Strategy-level kill criteria** (pause the producer, review the design):
@@ -394,8 +407,8 @@ Decided items are kept for traceability.
 | 3 | **Pattern Day Trader status** of the account (applies to US-regulated margin accounts < USD 25,000; rule changes have been discussed by FINRA — current status to be verified). | Stops on entry day count as day trades. |
 | 4 | **Base currency and FX.** EUR base: buy USD in advance (manual conversion) to avoid an automatic USD margin loan and interest. Confirm the FX rate used to convert the loss limit. | The system's limits are in USD. |
 | 5 | ~~Data budget~~ **Decided (v0.2/v0.3):** on top of the €100; terms-of-service risk of Apify scraping accepted; running costs capped at USD 50/month (section 8). | — |
-| 6 | **Setup B (bearish fade):** paper only for the first 3 months — agreed? | Highest risk setup. |
-| 7 | ~~Monthly loss limit in the risk engine~~ **Done (v0.3):** `MAX_MONTHLY_LOSS_USD`. **Still open:** weekly entry cap, max holding days and earnings blackout stay producer-side for now — build them into the risk engine before phase 3 (auto)? | A risk-engine rule is safer ("single veto" principle). |
+| 6 | ~~Setup B (bearish fade) paper only for the first 3 months~~ **Decided (v0.4):** yes; enforced by `paper_only_strategies: [bear_put_spread]`. Remove the entry after 3 months only if B meets the phase-1 gates on its own. | — |
+| 7 | ~~Monthly loss limit, weekly entry cap, max holding days~~ **Done:** `MAX_MONTHLY_LOSS_USD` (v0.3), `MAX_ENTRIES_PER_WEEK` and `exit.max_holding_days` (v0.4). **Decided (v0.4):** earnings / ex-dividend filter stays with the producer. | — |
 | 8 | **Personal account dealing.** Does your employer's compliance policy for private securities transactions (pre-clearance, holding periods, restricted list) apply to automated trading? | A 10-day time stop or a stop loss may conflict with a minimum holding period. |
 | 9 | **Tax treatment** (Germany: capital income, reporting of a foreign broker account in the tax return) — not assessed in this draft. | No tax statements are made here. |
 | 10 | **Partial-bar behaviour** of IBKR daily bars at 15:30 ET, as assumed in section 4. | If the current day is not included, the conditions refer to yesterday's bar. |
@@ -435,6 +448,7 @@ exit:
   take_profit_pct: 75
   stop_loss_pct: 50
   close_before_expiry_days: 7
+  max_holding_days: 10
 trigger:
   type: condition
   condition: "close > sma_20 and close > ema_10 and rsi_14 >= 50 and rsi_14 <= 75 and volume > 1.5 * avg_volume_20"

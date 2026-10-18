@@ -174,6 +174,7 @@ def trade_signal(
     take_profit_pct: float = 50,
     stop_loss_pct: float = 50,
     close_before_expiry_days: int = 5,
+    max_holding_days: int | None = None,
     max_reprice_steps: int = 3,
     created_at: str = CREATED,
     valid_until: str = VALID_UNTIL,
@@ -185,6 +186,13 @@ def trade_signal(
     }
     if strategy in ("bull_call_spread", "bear_put_spread"):
         contract["short_leg_delta"] = short_delta
+    exit_rules: dict[str, Any] = {
+        "take_profit_pct": take_profit_pct,
+        "stop_loss_pct": stop_loss_pct,
+        "close_before_expiry_days": close_before_expiry_days,
+    }
+    if max_holding_days is not None:
+        exit_rules["max_holding_days"] = max_holding_days
     return _render(
         {
             "contract_version": "1.0",
@@ -200,11 +208,7 @@ def trade_signal(
             "contract": contract,
             "order": {"type": "limit", "price": "mid", "max_reprice_steps": max_reprice_steps},
             "sizing": {"max_premium_usd": max_premium_usd, "max_contracts": max_contracts},
-            "exit": {
-                "take_profit_pct": take_profit_pct,
-                "stop_loss_pct": stop_loss_pct,
-                "close_before_expiry_days": close_before_expiry_days,
-            },
+            "exit": exit_rules,
         }
     )
 

@@ -87,5 +87,17 @@ def parse_check_at(value: str) -> time:
     return time(int(hour), int(minute))
 
 
+def trading_days_between(start: date, end: date) -> int:
+    """Sessions after `start` up to and including `end` (0 if `end` <= `start`)."""
+    if end <= start:
+        return 0
+    return sum(
+        1
+        for year in range(start.year, end.year + 1)
+        for day in _sessions(year)
+        if start < day <= end
+    )
+
+
 def dte(expiry: date, today: date) -> int:
     return (expiry - today).days

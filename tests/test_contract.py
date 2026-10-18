@@ -265,6 +265,15 @@ def test_close_before_expiry_must_be_below_dte_min():
     parse_signal(build(TRADE, **{"exit.close_before_expiry_days": 20}))
 
 
+def test_max_holding_days_is_optional_and_bounded():
+    assert parse_signal(build(TRADE)).signal.exit.max_holding_days is None
+    parsed = parse_signal(build(TRADE, **{"exit.max_holding_days": 10}))
+    assert parsed.signal.exit.max_holding_days == 10
+    assert fields_of(build(TRADE, **{"exit.max_holding_days": 0}))
+    assert fields_of(build(TRADE, **{"exit.max_holding_days": 251}))
+    assert fields_of(build(TRADE, **{"exit.max_holding_days": "10"}))
+
+
 # -- exit rules ------------------------------------------------------------------------
 def test_close_defaults_reduce_pct_100():
     assert parse_signal(build(CLOSE)).signal.reduce_pct == 100

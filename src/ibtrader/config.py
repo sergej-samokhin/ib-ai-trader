@@ -27,6 +27,7 @@ class RiskLimits(BaseModel):
     max_open_positions: int = Field(5, ge=1)
     max_daily_loss_usd: float = Field(300.0, gt=0)
     max_monthly_loss_usd: float = Field(3000.0, gt=0)
+    max_entries_per_week: int = Field(0, ge=0)  # 0 = no weekly cap
     max_underlying_exposure_usd: float = Field(1000.0, gt=0)
     min_open_interest: int = Field(100, ge=0)
     max_bid_ask_spread_pct: float = Field(10.0, gt=0)

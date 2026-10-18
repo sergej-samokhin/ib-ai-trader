@@ -155,6 +155,17 @@ def test_monthly_loss_limit_counts_open_risk_and_nets_profits(tmp_path):
     assert engine.check_entry(entry_request(), pf).quantity == 1
 
 
+def test_weekly_entry_limit(tmp_path):
+    engine = risk_engine(tmp_path, max_entries_per_week=2)
+    decision = engine.check_entry(entry_request(), portfolio(entries_this_week=2))
+    assert (decision.approved, decision.rule) == (False, risk.WEEKLY_ENTRIES)
+    assert engine.check_entry(entry_request(), portfolio(entries_this_week=1)).approved
+
+
+def test_weekly_entry_limit_is_off_by_default(engine):
+    assert engine.check_entry(entry_request(), portfolio(entries_this_week=100)).approved
+
+
 def test_max_open_positions(engine):
     decision = engine.check_entry(entry_request(), portfolio(open_positions=5))
     assert (decision.approved, decision.rule) == (False, risk.MAX_OPEN_POSITIONS)

@@ -129,6 +129,7 @@ class Trader:
         today = ny_date(now)
         midnight = datetime.combine(today, time(0), NY)
         month_start = datetime.combine(today.replace(day=1), time(0), NY)
+        week_start = datetime.combine(today - timedelta(days=today.weekday()), time(0), NY)
         return PortfolioSnapshot(
             open_positions=count,
             premium_at_risk=total,
@@ -136,6 +137,7 @@ class Trader:
             by_underlying=by_underlying,
             realized_pnl_today=self.store.realized_pnl_since(midnight, shadow=shadow),
             realized_pnl_month=self.store.realized_pnl_since(month_start, shadow=shadow),
+            entries_this_week=self.store.entries_since(week_start, shadow=shadow),
         )
 
     # ============================================================================ steps
@@ -436,7 +438,12 @@ class Trader:
     def create_entry(self, row, sig: EntrySignal, now: datetime) -> str:
         producer = self.registry.get(row["producer"])
         shadow = bool(
-            producer and self.settings.is_live and producer.status == ProducerStatus.PAPER_ONLY
+            producer
+            and self.settings.is_live
+            and (
+                producer.status == ProducerStatus.PAPER_ONLY
+                or sig.strategy in producer.paper_only_strategies
+            )
         )
         base = dict(
             producer=row["producer"],

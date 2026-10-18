@@ -79,6 +79,7 @@ class ExitRules(_Strict):
     take_profit_pct: float = Field(gt=0, le=1000)
     stop_loss_pct: float = Field(gt=0, le=100)
     close_before_expiry_days: int = Field(ge=0, le=60)
+    max_holding_days: int | None = Field(None, ge=1, le=250)
 
 
 class Envelope(_Strict):

@@ -103,7 +103,7 @@ All settings come from environment variables or `.env`. Signals can never change
 |---|---|
 | Mode | `MODE` (`paper` unless exactly `live`) |
 | IBKR | `IB_HOST`, `IB_PORT`, `IB_CLIENT_ID`, `IB_ACCOUNT`, `MARKET_DATA_TYPE` |
-| Risk | `MAX_POSITION_USD`, `MAX_PORTFOLIO_RISK_USD`, `MAX_OPEN_POSITIONS`, `MAX_DAILY_LOSS_USD`, `MAX_MONTHLY_LOSS_USD`, `MAX_UNDERLYING_EXPOSURE_USD`, `MIN_OPEN_INTEREST`, `MAX_BID_ASK_SPREAD_PCT`, `NO_ENTRY_OPEN_MINUTES`, `NO_ENTRY_CLOSE_MINUTES`, `MANUAL_APPROVAL_ABOVE_USD`, `MIN_CONFIDENCE_AUTO`, `APPROVAL_TIMEOUT_MINUTES`, `MAX_DELTA_DEVIATION` |
+| Risk | `MAX_POSITION_USD`, `MAX_PORTFOLIO_RISK_USD`, `MAX_OPEN_POSITIONS`, `MAX_DAILY_LOSS_USD`, `MAX_MONTHLY_LOSS_USD`, `MAX_ENTRIES_PER_WEEK`, `MAX_UNDERLYING_EXPOSURE_USD`, `MIN_OPEN_INTEREST`, `MAX_BID_ASK_SPREAD_PCT`, `NO_ENTRY_OPEN_MINUTES`, `NO_ENTRY_CLOSE_MINUTES`, `MANUAL_APPROVAL_ABOVE_USD`, `MIN_CONFIDENCE_AUTO`, `APPROVAL_TIMEOUT_MINUTES`, `MAX_DELTA_DEVIATION` |
 | Ingestion | `FILE_DROP_ENABLED`, `HTTP_ENABLED`, `HTTP_HOST`, `HTTP_PORT`, `MAX_SIGNAL_BYTES` |
 | Orders/loop | `LOOP_INTERVAL_SECONDS`, `REPRICE_INTERVAL_SECONDS`, `RULE_EVAL_INTERVAL_SECONDS`, `PRICE_TICK`, `EXIT_MAX_REPRICE_STEPS`, `DAILY_SUMMARY_TIME` |
 | Notifications | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `SMTP_*`, `NOTIFY_EMAIL_TO` |
@@ -142,6 +142,10 @@ rule id and the producer.
 | `auto` | executes within limits | executes within limits (entries above `MANUAL_APPROVAL_ABOVE_USD` still need approval) |
 | `paused` | all signals rejected | same |
 
+`paper_only_strategies` (list, optional) in a producer's registry entry keeps single strategies
+simulated in live mode whatever the status, for example `[bear_put_spread]` while a riskier setup
+is still on probation. In `MODE=paper` it changes nothing.
+
 ## Paper → live
 
 Follow the checklist in [docs/RUNBOOK.md](docs/RUNBOOK.md#switching-paper--live). In short: run
@@ -165,7 +169,7 @@ src/ibtrader/
   gateway.py    auth, validation, dedupe, TTL, versioning, conflict policy
   evaluator.py  rule evaluation        expr.py / indicators.py  condition language
   selector.py   expiry/strike/right    risk.py   risk engine (single veto)
-  orders.py     order manager          monitor.py  TP/SL/time exits
+  orders.py     order manager          monitor.py  TP/SL/time/holding exits
   app.py        Trader orchestration   store.py  SQLite state + audit log
   ibkr.py       ib_async adapters      sim.py    synthetic market data + simulated broker
   cli.py        `ibtrader` command

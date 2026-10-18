@@ -53,6 +53,20 @@
           "title": "Close Before Expiry Days",
           "type": "integer"
         },
+        "max_holding_days": {
+          "anyOf": [
+            {
+              "maximum": 250,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Holding Days"
+        },
         "stop_loss_pct": {
           "exclusiveMinimum": 0,
           "maximum": 100,

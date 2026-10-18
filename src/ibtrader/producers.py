@@ -11,6 +11,8 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
+from ibtrader.contract.models import Strategy
+
 PRODUCER_ID_PATTERN = r"^[a-z0-9][a-z0-9_-]{1,63}$"
 
 
@@ -29,6 +31,8 @@ class Producer(BaseModel):
     budget_usd: float = Field(500.0, ge=0)
     api_key_sha256: str | None = Field(None, pattern=r"^[0-9a-f]{64}$")
     rate_limit_per_hour: int = Field(60, ge=1)
+    # in live mode, entries with these strategies run as SHADOW (simulated) whatever the status
+    paper_only_strategies: frozenset[Strategy] = frozenset()
     description: str = ""
 
 
