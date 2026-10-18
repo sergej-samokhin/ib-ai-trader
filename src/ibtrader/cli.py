@@ -142,6 +142,35 @@ def cmd_approve(args) -> int:
     return 0 if ok else 1
 
 
+def cmd_intent(args) -> int:
+    """Resolve an `unknown` intent after checking the order in TWS."""
+    trader = _offline_trader(_settings(args))
+    if args.filled is None:
+        print("--filled is required (0 if the order did not fill)", file=sys.stderr)
+        return 2
+    try:
+        status = trader.resolve_intent(args.intent_id, args.filled, args.price, args.by, utcnow())
+    except ValueError as exc:
+        _print({"intent_id": args.intent_id, "ok": False, "error": str(exc)})
+        return 1
+    _print({"intent_id": args.intent_id, "ok": True, "status": status})
+    return 0
+
+
+def cmd_position(args) -> int:
+    """Book a close that happened outside ibtrader."""
+    trader = _offline_trader(_settings(args))
+    try:
+        pnl = trader.close_position_manually(
+            args.position_id, args.price, args.by, utcnow(), quantity=args.quantity
+        )
+    except ValueError as exc:
+        _print({"position_id": args.position_id, "ok": False, "error": str(exc)})
+        return 1
+    _print({"position_id": args.position_id, "ok": True, "realized_pnl": round(pnl, 2)})
+    return 0
+
+
 def cmd_status(args) -> int:
     settings = _settings(args)
     store = _store(settings)
@@ -221,7 +250,8 @@ def cmd_run(args) -> int:
             log.error("unsafe configuration", extra={"fields": {"problem": problem}})
         return 2
 
-    from ibtrader.app import Trader
+    from ibtrader.app import Trader, run_iteration
+    from ibtrader.health import ConnectionWatch
     from ibtrader.ingestion.filedrop import FileDropAdapter
     from ibtrader.ingestion.http import HttpAdapter
 
@@ -267,14 +297,13 @@ def cmd_run(args) -> int:
     _signal.signal(_signal.SIGTERM, _stop)
     _signal.signal(_signal.SIGINT, _stop)
     trader.notifier.send("ibtrader started", f"mode={settings.mode} demo={args.demo}")
+    watch = ConnectionWatch(trader.notifier, trader.audit)
     while not stop["flag"]:
         now = utcnow()
         try:
-            if conn is not None:
-                conn.ensure_connected()
-            for adapter in adapters:
-                adapter.poll(now)
-            trader.tick(now)
+            run_iteration(
+                trader, adapters, watch, now, conn.ensure_connected if conn is not None else None
+            )
         except Exception as exc:  # noqa: BLE001
             log.exception("loop error")
             trader.notifier.send("Loop error", str(exc), "error")
@@ -333,6 +362,22 @@ def build_parser() -> argparse.ArgumentParser:
         p.add_argument("intent_id")
         p.add_argument("--by", default="operator")
         p.set_defaults(func=cmd_approve)
+
+    p = sub.add_parser("intent", help="resolve an intent left 'unknown' after a restart")
+    p.add_argument("action", choices=["resolve"])
+    p.add_argument("intent_id")
+    p.add_argument("--filled", type=int, help="contracts filled at IBKR (0 = not filled)")
+    p.add_argument("--price", type=float, help="average fill price per share (net for spreads)")
+    p.add_argument("--by", default="operator")
+    p.set_defaults(func=cmd_intent)
+
+    p = sub.add_parser("position", help="book a position closed outside ibtrader (e.g. in TWS)")
+    p.add_argument("action", choices=["close"])
+    p.add_argument("position_id")
+    p.add_argument("--price", type=float, required=True, help="exit price per share (net credit)")
+    p.add_argument("--quantity", type=int, help="contracts closed (default: all)")
+    p.add_argument("--by", default="operator")
+    p.set_defaults(func=cmd_position)
 
     p = sub.add_parser("status", help="open positions, open intents, active signals")
     p.set_defaults(func=cmd_status)

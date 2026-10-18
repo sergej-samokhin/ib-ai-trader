@@ -644,30 +644,175 @@ class Trader:
 
     # ============================================================================ ops
     def recover(self, now: datetime) -> None:
-        """After a restart: re-attach working orders by orderRef, flag the rest."""
+        """After a restart or reconnect: re-attach working orders by orderRef; book orders that
+        finished while we were away from IBKR's completed orders/executions; flag the rest."""
         for intent in self.store.intents_with_status("submitted"):
             if intent["shadow"]:
                 self.store.update_intent(
                     intent["id"], now, status="cancelled", reason="simulated order lost on restart"
                 )
                 continue
-            order_id = self.broker.find_by_ref(intent["order_ref"]) if intent["order_ref"] else None
+            ref = intent["order_ref"]
+            order_id = self.broker.find_by_ref(ref) if ref else None
             if order_id:
                 self.store.update_intent(intent["id"], now, broker_order_id=order_id)
                 self._intent_event("order_reattached", intent, now, order_id=order_id)
-            else:
-                self.store.update_intent(
-                    intent["id"],
+                continue
+            final = self.broker.lookup_final(ref) if ref else None
+            if final is not None and (final.filled_qty == 0 or final.avg_fill_price):
+                self._finalize(
+                    intent,
+                    final.filled_qty,
+                    final.avg_fill_price,
+                    final.state,
+                    final.message or "recovered after restart",
+                    "order_recovered",
                     now,
-                    status="unknown",
-                    reason="order not found at broker after restart",
                 )
-                self._intent_event("order_unknown", intent, now, level=logging.WARNING)
-                self.notifier.send(
-                    "Order state unknown after restart",
-                    f"{intent['id']} ({intent['order_ref']}): reconcile with IBKR manually.",
-                    "error",
-                )
+                continue
+            self.store.update_intent(
+                intent["id"],
+                now,
+                status="unknown",
+                reason="order not found at broker after restart",
+            )
+            self._intent_event("order_unknown", intent, now, level=logging.WARNING)
+            self.notifier.send(
+                "Order state unknown after restart",
+                f"{intent['id']} ({ref}): check TWS, then "
+                f"`ibtrader intent resolve {intent['id']} --filled N --price P`.",
+                "error",
+            )
+
+    def on_reconnect(self, now: datetime) -> None:
+        """Order handles from the previous connection are stale: drop them and re-run recovery."""
+        self.broker.reset()
+        self.recover(now)
+
+    def _finalize(
+        self,
+        intent,
+        filled_qty: int,
+        avg_price: float | None,
+        broker_state: str,
+        reason: str,
+        event: str,
+        now: datetime,
+        **extra,
+    ) -> None:
+        """Close out an intent outside the normal order loop (recovery, manual resolution)."""
+        if filled_qty >= intent["quantity"] and filled_qty > 0:
+            status = "filled"
+        elif filled_qty > 0:
+            status = "partially_filled"
+        else:
+            status = "rejected" if broker_state == "rejected" else "cancelled"
+        self.store.update_intent(
+            intent["id"],
+            now,
+            status=status,
+            filled_qty=filled_qty,
+            avg_fill_price=avg_price,
+            reason=reason,
+        )
+        self._intent_event(
+            event,
+            intent,
+            now,
+            status=status,
+            filled_qty=filled_qty,
+            avg_fill_price=avg_price,
+            **extra,
+        )
+        final = self.store.get_intent(intent["id"])
+        if filled_qty > 0:
+            if final["kind"] == "entry":
+                self._on_entry_fill(final, now)
+            else:
+                self._on_exit_fill(final, now)
+        self._feedback(
+            final["producer"],
+            {
+                "signal_id": final["signal_id"],
+                "version": final["version"],
+                "event": f"order_{status}",
+                "intent_id": final["id"],
+                "filled_qty": filled_qty,
+            },
+        )
+
+    # ============================================================================ manual fixes
+    def resolve_intent(
+        self, intent_id: str, filled_qty: int, avg_price: float | None, who: str, now: datetime
+    ) -> str:
+        """Operator resolves an `unknown` intent after checking TWS. Returns the new status."""
+        intent = self.store.get_intent(intent_id)
+        if intent is None:
+            raise ValueError(f"unknown intent {intent_id}")
+        if intent["status"] != "unknown":
+            raise ValueError(f"intent {intent_id} is {intent['status']}, not unknown")
+        if filled_qty < 0 or filled_qty > intent["quantity"]:
+            raise ValueError(f"filled quantity must be 0..{intent['quantity']}")
+        if filled_qty > 0 and (avg_price is None or avg_price <= 0):
+            raise ValueError("a positive average fill price is required when filled > 0")
+        self._finalize(
+            intent,
+            filled_qty,
+            avg_price if filled_qty else None,
+            "cancelled",
+            f"resolved by {who}",
+            "manual_intent_resolved",
+            now,
+            resolved_by=who,
+        )
+        return self.store.get_intent(intent_id)["status"]
+
+    def close_position_manually(
+        self,
+        position_id: str,
+        exit_price: float,
+        who: str,
+        now: datetime,
+        quantity: int | None = None,
+    ) -> float:
+        """Book a close that happened outside ibtrader (e.g. in TWS). Returns realised P&L."""
+        pos = self.store.get_position(position_id)
+        if pos is None or pos["status"] != "open":
+            raise ValueError(f"position {position_id} is not open")
+        if exit_price < 0:
+            raise ValueError("exit price must be >= 0")
+        qty = pos["quantity"] if quantity is None else quantity
+        if not 1 <= qty <= pos["quantity"]:
+            raise ValueError(f"quantity must be 1..{pos['quantity']}")
+        open_exits = self.store.open_intents_for_position(position_id)
+        if any(i["status"] == "submitted" for i in open_exits):
+            raise ValueError(
+                "an exit order is still working at the broker: cancel it in TWS and let the "
+                "trader process the cancel first"
+            )
+        for intent in open_exits:  # unknown / approved / awaiting exits are superseded
+            self.store.update_intent(
+                intent["id"], now, status="cancelled", reason=f"position closed by {who}"
+            )
+        pnl = self.store.record_close(position_id, qty, exit_price, now)
+        self.audit(
+            "manual_position_closed",
+            now,
+            producer=pos["producer"],
+            signal_id=pos["signal_id"],
+            version=pos["version"],
+            position_id=position_id,
+            quantity=qty,
+            exit_price=exit_price,
+            realized_pnl=round(pnl, 2),
+            closed_by=who,
+        )
+        self.notifier.send(
+            f"Position closed manually: {pos['underlying']}",
+            f"{position_id}: {qty} @ {exit_price:.2f}, P&L {pnl:+.2f} USD (by {who})",
+            "warning",
+        )
+        return pnl
 
     def reconcile(self) -> dict[int, tuple[float, float]]:
         """conId -> (expected from the store, actual at the broker) where they differ."""
@@ -715,3 +860,36 @@ class Trader:
             level=level,
             **data,
         )
+
+
+def run_iteration(
+    trader: Trader,
+    adapters: list,
+    watch,
+    now: datetime,
+    ensure_connected: Callable[[], bool] | None = None,
+) -> None:
+    """One pass of the main loop.
+
+    Ingestion is local and always runs. The trading tick needs the broker: while IBKR is down it
+    is skipped (no blind order actions) and `watch` alerts once per outage. After a reconnect the
+    order handles are refreshed and recovery runs before the next tick.
+    """
+    connected = True
+    if ensure_connected is not None:
+        try:
+            reconnected = ensure_connected()
+        except Exception as exc:  # noqa: BLE001
+            connected = False
+            watch.failed(now, exc)
+        else:
+            if watch.ok(now) or reconnected:
+                trader.on_reconnect(now)
+    for adapter in adapters:
+        try:
+            adapter.poll(now)
+        except Exception as exc:  # noqa: BLE001
+            log.exception("ingestion error")
+            trader.notifier.send("Ingestion error", str(exc), "error")
+    if connected:
+        trader.tick(now)

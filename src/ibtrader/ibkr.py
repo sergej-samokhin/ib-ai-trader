@@ -73,10 +73,13 @@ class IBKRConnection:
             raise PermissionError(f"MODE=live but connected account {account} is a paper account")
         self.account = account
 
-    def ensure_connected(self) -> None:
-        if not self.ib.isConnected():
-            log.warning("IBKR disconnected, reconnecting")
-            self.connect()
+    def ensure_connected(self) -> bool:
+        """Reconnect if needed. Returns True if a reconnect happened (caller re-runs recovery)."""
+        if self.ib.isConnected():
+            return False
+        log.warning("IBKR disconnected, reconnecting")
+        self.connect()
+        return True
 
     def sleep(self, seconds: float) -> None:
         self.ib.sleep(seconds)
@@ -299,6 +302,49 @@ class IBKRBroker:
                 self._trades[order_id] = trade
                 return order_id
         return None
+
+    def lookup_final(self, order_ref: str) -> BrokerOrderStatus | None:
+        """Completed orders and executions IBKR sends at connect time (current trading day only).
+
+        Spreads: the net combo price is taken from BAG-level executions. If only leg executions
+        exist for a multi-leg order the net price is ambiguous and None is returned (stays
+        `unknown`, operator resolves it).
+        """
+        trades = [t for t in self.ib.trades() if t.order.orderRef == order_ref]
+        fills = [f for f in self.ib.fills() if f.execution.orderRef == order_ref]
+        if not trades and not fills:
+            return None
+        bag = [f for f in fills if f.contract.secType == "BAG"]
+        legs = {f.contract.conId for f in fills if f.contract.secType != "BAG"}
+        counted = bag or (fills if len(legs) <= 1 else [])
+        if fills and not counted:
+            return None
+        filled = sum(float(f.execution.shares) for f in counted)
+        avg = (
+            sum(float(f.execution.shares) * float(f.execution.price) for f in counted) / filled
+            if filled
+            else None
+        )
+        status = trades[-1].orderStatus.status if trades else ""
+        reported = max(
+            [float(trades[-1].orderStatus.filled or 0), _num(trades[-1].order.filledQuantity) or 0]
+            if trades
+            else [0.0]
+        )
+        if reported > filled:
+            return None  # IBKR says it filled, but we lack the executions (price): stay unknown
+        if status in ("PreSubmitted", "Submitted", "PendingSubmit", "PendingCancel", "ApiPending"):
+            return None  # still working: find_by_ref should have found it
+        state = (
+            "rejected"
+            if status == "Inactive" and not filled
+            else ("filled" if status == "Filled" or (filled and not trades) else "cancelled")
+        )
+        message = f"recovered from IBKR ({'executions' if fills else 'completed orders'})"
+        return BrokerOrderStatus(state, int(filled), avg, message)  # type: ignore[arg-type]
+
+    def reset(self) -> None:
+        self._trades.clear()
 
     def positions(self) -> dict[int, float]:
         return {

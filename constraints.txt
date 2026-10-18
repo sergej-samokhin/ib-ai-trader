@@ -1,0 +1,22 @@
+# Exact runtime versions the test suite passed with (Python 3.12/3.13).
+# Used by the Dockerfile and for deployments: pip install -c constraints.txt .
+# Regenerate after dependency upgrades: see CLAUDE.md.
+aeventkit==2.1.0
+annotated-types==0.8.0
+exchange_calendars==4.13.2
+ib_async==2.1.0
+korean_lunar_calendar==0.4.0
+nest-asyncio==1.6.0
+numpy==2.5.4
+pandas==3.0.6
+pandas_market_calendars==5.5.0
+pydantic==2.14.1
+pydantic_core==2.50.1
+pyluach==2.3.0
+python-dateutil==2.9.0.post0
+PyYAML==6.0.3
+six==1.17.0
+toolz==1.2.0
+typing-inspection==0.4.4
+typing_extensions==4.16.0
+tzdata==2025.3
