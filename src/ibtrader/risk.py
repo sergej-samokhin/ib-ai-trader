@@ -123,7 +123,8 @@ class RiskEngine:
         }
         binding_rule = min(rooms, key=rooms.__getitem__)
         allowed_usd = rooms[binding_rule]
-        by_money = math.floor(allowed_usd / worst_per_contract) if allowed_usd > 0 else 0
+        # epsilon: an exact fit (220 / 110) must not lose a contract to float error
+        by_money = math.floor(allowed_usd / worst_per_contract + 1e-9) if allowed_usd > 0 else 0
         quantity = min(req.max_contracts, by_money)
         if quantity < 1:
             return RiskDecision.reject(
@@ -138,7 +139,7 @@ class RiskEngine:
             if req.producer.status == ProducerStatus.MANUAL:
                 reasons.append("producer requires manual approval")
             premium = quantity * max_price * 100
-            if premium > lim.manual_approval_above_usd:
+            if premium > lim.manual_approval_above_usd + 1e-6:
                 reasons.append(
                     f"premium up to {premium:.2f} USD > {lim.manual_approval_above_usd:.2f} USD"
                 )

@@ -455,6 +455,9 @@ class Trader:
             )
         except SelectionError as exc:
             return self._rejected_intent(base, "contract_selection", str(exc), now)
+        except Exception as exc:  # noqa: BLE001 - feed outage: reject loudly, never drop silently
+            log.exception("market data error during contract selection")
+            return self._rejected_intent(base, "market_data", f"market data error: {exc}", now)
 
         request = EntryRequest(
             producer=producer,

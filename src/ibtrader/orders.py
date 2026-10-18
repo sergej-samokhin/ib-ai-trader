@@ -193,7 +193,11 @@ class OrderManager:
             )
         else:
             target = ladder(mid, natural, step, steps) if steps else natural
-            price = round_sell(max(target, 0.0), self.tick)
+            # Intermediate steps round up (patient); the final step must be marketable, so it
+            # rounds DOWN to the tick at or below the natural price. Rounding it up would park
+            # the order up to one tick above the bid, where it may never fill.
+            rounder = round_buy if step >= steps else round_sell
+            price = rounder(max(target, 0.0), self.tick)
         if price != intent["limit_price"]:
             broker.modify(intent["broker_order_id"], price)
         self.store.update_intent(
