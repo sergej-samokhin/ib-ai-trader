@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- New risk limit `MAX_ENTRIES_PER_WEEK` (rule `weekly_entry_limit`, default 0 = off): caps new
+  entries per calendar week (New York, all producers).
+- Signal Contract 1.0, additive: optional `exit.max_holding_days` (1–250 NYSE sessions after the
+  entry day); the position monitor closes with exit reason `holding_exit`. Schema regenerated.
+- Producer registry: optional `paper_only_strategies` keeps listed strategies simulated (shadow)
+  in live mode whatever the producer status.
+- `config/producers.example.yaml`: entry for the `social-momentum` producer
+  (docs/strategy/social-momentum-options.md).
 - New risk limit `MAX_MONTHLY_LOSS_USD` (rule `monthly_loss_limit`, placeholder default 3000):
   rejects entries once the calendar month's net realised P&L reaches minus the limit, and sizes
   entries so that this P&L minus all premium at risk never falls below it.

@@ -433,6 +433,18 @@ class Store:
             )
         return pnl
 
+    def entries_since(self, since: datetime, shadow: bool = False) -> int:
+        """Entry intents created since `since` that are open, unknown or (partly) filled.
+        Rejected, expired and unfilled cancelled entries do not count."""
+        statuses = (*OPEN_INTENT_STATUSES, "unknown")
+        marks = ",".join("?" * len(statuses))
+        row = self.one(
+            "SELECT COUNT(*) AS n FROM intents WHERE kind = 'entry' AND created_at >= ?"  # noqa: S608
+            f" AND shadow = ? AND (status IN ({marks}) OR filled_qty > 0)",
+            (iso(since), int(shadow), *statuses),
+        )
+        return int(row["n"]) if row else 0
+
     def realized_pnl_since(self, since: datetime, shadow: bool = False) -> float:
         row = self.one(
             "SELECT COALESCE(SUM(pnl), 0) AS p FROM pnl_events WHERE at >= ? AND shadow = ?",

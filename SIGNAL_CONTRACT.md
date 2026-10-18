@@ -115,7 +115,7 @@ Behaviour details that affect how you write signals:
   stop a rule, replace it with a newer `version` whose `valid_until` is only slightly after
   `created_at`, or ask the operator to pause your producer id.
 - **Exit rules are fixed at fill time.** A position keeps the `exit` block (take profit, stop loss,
-  close before expiry) of the signal version that opened it. A newer rule version does not change
+  close before expiry, holding days) of the signal version that opened it. A newer rule version does not change
   open positions.
 
 ## 4. Field reference
@@ -193,6 +193,7 @@ during regular session hours.
 | `exit.take_profit_pct` | number | yes | greater than 0, at most 1000. Gain in percent of the entry price per share (mid-based). |
 | `exit.stop_loss_pct` | number | yes | greater than 0, at most 100. Loss in percent of the entry price. |
 | `exit.close_before_expiry_days` | integer | yes | 0 to 60. Closes the position when the days to the nearest expiry are less than or equal to this value. |
+| `exit.max_holding_days` | integer | no | 1 to 250. Closes the position once it has been held this many NYSE sessions; the entry day does not count (opened Monday, `3` closes at the first position check of Thursday's session). Omit it for no holding limit. |
 
 ### 4.7 Trigger (`rule` only)
 
@@ -527,7 +528,7 @@ host when file drop is enabled.)
 | `manual` | A human rejected the approval request (no `reason` field in the event) |
 
 Events that are **not** sent to producers: manual approval, approval timeout, order submission
-errors, position opened, take-profit/stop-loss/time exits as such (you only see the resulting
+errors, position opened, take-profit/stop-loss/time/holding exits as such (you only see the resulting
 `order_*` event of the exit order), and a restart that could not find an order. Use `GET` for the intent
 status (`expired`, `error`, `unknown`).
 
@@ -582,6 +583,7 @@ with the rule id shown (the id appears in the `rejected` feedback event and in t
 | `market_hours` | Inside the entry window | `NO_ENTRY_OPEN_MINUTES`, `NO_ENTRY_CLOSE_MINUTES` |
 | `daily_loss_limit` | Realised P&L of the day (New York date) greater than minus the limit | `MAX_DAILY_LOSS_USD` |
 | `monthly_loss_limit` | Realised P&L of the calendar month (New York date) greater than minus the limit; also a sizing limit, see below | `MAX_MONTHLY_LOSS_USD` |
+| `weekly_entry_limit` | Entries of the calendar week (Monday to Sunday, New York date, all producers; real and simulated entries are counted separately) below the maximum. An entry counts from risk approval on, unless it ends rejected, expired or cancelled without any fill. Off when the setting is 0 (default). | `MAX_ENTRIES_PER_WEEK` |
 | `max_open_positions` | Open positions plus open entry intents below the maximum | `MAX_OPEN_POSITIONS` |
 | `liquidity_open_interest` | Open interest of each leg at least the minimum; missing data rejects | `MIN_OPEN_INTEREST` |
 | `liquidity_spread` | Bid-ask spread of each leg, in percent of its mid, at most the maximum; missing data rejects | `MAX_BID_ASK_SPREAD_PCT` |
@@ -614,7 +616,9 @@ receives no event for the timeout; the intent status changes to `expired`.
 
 **Producer status.** The operator assigns each producer `paper_only`, `manual`, `auto` (or `paused`).
 When the operator runs the system in live mode, entries of `paper_only` producers are only simulated
-and never sent to IBKR; the events you receive look the same. Do not assume that a filled order
+and never sent to IBKR; the events you receive look the same. The operator can also list single
+strategies under `paper_only_strategies` for your producer: in live mode, entries with those
+strategies are simulated whatever your status. Do not assume that a filled order
 event from a new producer means real money.
 
 ## 12. Self-test

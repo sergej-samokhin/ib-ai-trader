@@ -238,3 +238,18 @@ def test_utcnow_is_timezone_aware_utc():
     now = clock.utcnow()
     assert now.tzinfo is not None
     assert now.utcoffset() == timedelta(0)
+
+
+def test_trading_days_between_counts_sessions_after_the_start():
+    monday = date(2026, 10, 19)
+    assert clock.trading_days_between(monday, monday) == 0
+    assert clock.trading_days_between(monday, date(2026, 10, 18)) == 0
+    assert clock.trading_days_between(monday, date(2026, 10, 20)) == 1
+    assert clock.trading_days_between(monday, date(2026, 10, 25)) == 4  # Sunday: Tue-Fri
+    # Thanksgiving 2026-11-26 has no session
+    assert clock.trading_days_between(date(2026, 11, 23), date(2026, 11, 27)) == 3
+
+
+def test_trading_days_between_spans_the_year_end():
+    # sessions after Wed 2026-12-30: Thu Dec 31, (Fri Jan 1 holiday, weekend), Mon Jan 4, Tue Jan 5
+    assert clock.trading_days_between(date(2026, 12, 30), date(2027, 1, 5)) == 3

@@ -21,6 +21,7 @@ ORDER_TYPE = "order_type"
 MARKET_HOURS = "market_hours"
 DAILY_LOSS = "daily_loss_limit"
 MONTHLY_LOSS = "monthly_loss_limit"
+WEEKLY_ENTRIES = "weekly_entry_limit"
 MAX_OPEN_POSITIONS = "max_open_positions"
 LIQUIDITY_OI = "liquidity_open_interest"
 LIQUIDITY_SPREAD = "liquidity_spread"
@@ -39,6 +40,7 @@ class PortfolioSnapshot:
     by_underlying: dict[str, float] = field(default_factory=dict)
     realized_pnl_today: float = 0.0
     realized_pnl_month: float = 0.0
+    entries_this_week: int = 0
 
 
 @dataclass(frozen=True)
@@ -99,6 +101,11 @@ class RiskEngine:
                 MONTHLY_LOSS,
                 f"realised P&L this month {pf.realized_pnl_month:.2f} "
                 f"<= -{lim.max_monthly_loss_usd:.2f}",
+            )
+        if lim.max_entries_per_week and pf.entries_this_week >= lim.max_entries_per_week:
+            return RiskDecision.reject(
+                WEEKLY_ENTRIES,
+                f"{pf.entries_this_week} entries this week (max {lim.max_entries_per_week})",
             )
         if pf.open_positions >= lim.max_open_positions:
             return RiskDecision.reject(

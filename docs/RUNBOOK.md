@@ -111,7 +111,7 @@ seconds because market-data calls block; `docker compose stop` waits 10 seconds 
 What a stop does **not** do:
 
 - Working orders stay at IBKR (orders are DAY orders and expire at the close).
-- Nothing watches open positions while the trader is down: no take profit, stop loss or time exit.
+- Nothing watches open positions while the trader is down: no take profit, stop loss, time exit or holding exit.
 
 Before a planned stop with entry orders working: `ibtrader kill on --reason "planned stop"`, wait until
 `kill_switch_activated` appears in the audit log (one loop iteration), then stop.
@@ -178,7 +178,7 @@ While it is active:
 
 - Every new entry is rejected with rule `kill_switch`: trade signals (they are consumed and rejected, not held),
   rule firings (each uses one of the rule's daily entries) and approved intents about to be submitted.
-- **Exits continue**: the position monitor (take profit, stop loss, time exit) and exit signals still work, and exit orders are not cancelled.
+- **Exits continue**: the position monitor (take profit, stop loss, time exit, holding exit) and exit signals still work, and exit orders are not cancelled.
 - Signals are still accepted by the gateway. Producers are not paused (see section 6).
 
 What it does **not** do: close positions, cancel exit orders, stop the process, pause producers. Quantity
@@ -229,8 +229,8 @@ There is no command to retire a single signal or rule. Options: pause the produc
 
 An entry waits for a human (`awaiting_approval`) if the risk check passed and any of these holds: the
 producer status is `manual`; the premium (quantity times worst-case price) is above `MANUAL_APPROVAL_ABOVE_USD`;
-the signal's `confidence` is below `MIN_CONFIDENCE_AUTO` (0.0 disables it). Simulated (shadow) entries of
-`paper_only` producers in live mode never need approval.
+the signal's `confidence` is below `MIN_CONFIDENCE_AUTO` (0.0 disables it). Simulated (shadow) entries in live mode
+(`paper_only` producers, and strategies listed in a producer's `paper_only_strategies`) never need approval.
 
 The request goes to the notification channels as `Approval needed: <intent_id>`: producer, signal, quantity,
 legs, limit and maximum price, the reasons, the two commands, and the first 1500 characters of the producer's
@@ -420,6 +420,10 @@ Statuses (`config/producers.yaml`, applied after a restart):
 | `auto` | executes within limits | executes within limits; entries above `MANUAL_APPROVAL_ABOVE_USD` or below `MIN_CONFIDENCE_AUTO` still need approval |
 | `paused` | all documents rejected | same |
 
+`paper_only_strategies: [bear_put_spread]` (optional, per producer) keeps the listed strategies simulated in live mode
+whatever the status. Use it to promote one setup of a producer while another stays on paper; remove the line when the
+second setup has passed its own paper phase.
+
 Go-live criteria from the spec (section 9): a minimum number N of paper trades per producer without unhandled
 errors, plus a manual review of the audit log. **N is not defined** in the spec or the code; the account owner sets it (open item in
 [ASSUMPTIONS.md](ASSUMPTIONS.md)). Suggested evidence before each step (`paper_only` to `manual`, then `manual` to `auto`):
@@ -449,7 +453,7 @@ Go through every item. Do not switch before the paper integration checklist in t
 [ASSUMPTIONS.md](ASSUMPTIONS.md#b-assumptions-to-verify-during-integration) are done.
 
 1. Set the global limits deliberately in `.env` (`MAX_POSITION_USD`, `MAX_PORTFOLIO_RISK_USD`, `MAX_OPEN_POSITIONS`,
-   `MAX_DAILY_LOSS_USD`, `MAX_MONTHLY_LOSS_USD`, `MAX_UNDERLYING_EXPOSURE_USD`, `MIN_OPEN_INTEREST`, `MAX_BID_ASK_SPREAD_PCT`,
+   `MAX_DAILY_LOSS_USD`, `MAX_MONTHLY_LOSS_USD`, `MAX_ENTRIES_PER_WEEK`, `MAX_UNDERLYING_EXPOSURE_USD`, `MIN_OPEN_INTEREST`, `MAX_BID_ASK_SPREAD_PCT`,
    `NO_ENTRY_OPEN_MINUTES`, `NO_ENTRY_CLOSE_MINUTES`, `MANUAL_APPROVAL_ABOVE_USD`, `MIN_CONFIDENCE_AUTO`) and each producer's `budget_usd`. The placeholders are not recommendations.
 2. Keep every producer at `paper_only` (simulated in live mode) or `manual`. Promote only per section 12.
 3. Gateway: log in to the **live** account (compose: `TRADING_MODE=live`).

@@ -78,6 +78,7 @@ def test_trade_signal_becomes_position_linked_to_signal(h):
         "take_profit_pct": 50.0,
         "stop_loss_pct": 50.0,
         "close_before_expiry_days": 5,
+        "max_holding_days": None,
     }
     assert pos["max_reprice_steps"] == 3
     intent = h.intent(kind="entry")
@@ -177,6 +178,37 @@ def test_no_time_exit_while_outside_the_dte_threshold(h):
     h.fill_entry()
     h.at(utc(2026, 11, 13, 15, 0))  # Friday, DTE 7
     h.run(8)
+    assert h.intents(kind="exit") == []
+
+
+def test_holding_exit_after_max_holding_days(h):
+    h.submit(trade_signal(max_holding_days=3, take_profit_pct=1000, stop_loss_pct=100))
+    pos = h.fill_entry()  # opened Monday 2026-10-19
+    h.at(utc(2026, 10, 21, 15, 0))  # Wednesday: held 2 sessions
+    h.run(4)
+    assert h.intents(kind="exit") == []
+    h.at(utc(2026, 10, 22, 14, 0))  # Thursday 10:00: held 3 sessions
+    close_position(h)
+    assert h.intent(kind="exit")["exit_reason"] == "holding_exit"
+    assert h.store.get_position(pos["id"])["status"] == "closed"
+
+
+def test_holding_days_count_sessions_not_calendar_days(h):
+    h.submit(trade_signal(max_holding_days=8, take_profit_pct=1000, stop_loss_pct=100))
+    h.fill_entry()  # Monday 2026-10-19
+    h.at(utc(2026, 10, 28, 15, 0))  # Wednesday: 9 calendar days but only 7 sessions
+    h.run(4)
+    assert h.intents(kind="exit") == []
+    h.at(utc(2026, 10, 29, 14, 0))  # Thursday: 8 sessions
+    close_position(h)
+    assert h.intent(kind="exit")["exit_reason"] == "holding_exit"
+
+
+def test_without_max_holding_days_there_is_no_holding_exit(h):
+    h.submit(trade_signal(take_profit_pct=1000, stop_loss_pct=100))
+    h.fill_entry()
+    h.at(utc(2026, 11, 9, 15, 0))  # three weeks later, DTE 11 > 5
+    h.run(4)
     assert h.intents(kind="exit") == []
 
 
@@ -651,6 +683,74 @@ def test_shadow_pnl_is_kept_apart_from_real_pnl(tmp_path):
     assert h.trader.reconcile() == {}  # shadow positions never show up against the real account
 
 
+def test_paper_only_strategy_runs_as_shadow_in_live_mode(tmp_path):
+    producers = [
+        Producer(
+            id="momentum-agent",
+            status="auto",
+            budget_usd=1000,
+            paper_only_strategies=["bear_put_spread"],
+        )
+    ]
+    h = live_harness(tmp_path, producers=producers, spots={"AMD": 40.0})
+    h.submit(trade_signal("bear-001", underlying="AMD", strategy="bear_put_spread"))
+    bear = h.fill_entry("bear-001")
+    h.submit(trade_signal("bull-001"))
+    bull = h.fill_entry("bull-001")
+    assert (bear["shadow"], bull["shadow"]) == (1, 0)
+    assert len(h.broker.orders) == 1
+    assert len(h.shadow_broker.orders) == 1
+
+
+def test_paper_only_strategies_change_nothing_in_paper_mode(tmp_path):
+    producers = [
+        Producer(
+            id="momentum-agent",
+            status="auto",
+            budget_usd=1000,
+            paper_only_strategies=["bear_put_spread"],
+        )
+    ]
+    h = make_harness(tmp_path, producers=producers, spots={"AMD": 40.0})
+    h.submit(trade_signal("bear-001", underlying="AMD", strategy="bear_put_spread"))
+    assert h.fill_entry("bear-001")["shadow"] == 0
+    assert len(h.broker.orders) == 1
+
+
+# ============================================================================ weekly entry cap
+def test_weekly_entry_limit_counts_entries_of_the_new_york_week(tmp_path):
+    h = make_harness(tmp_path, max_entries_per_week=2)
+    h.submit(trade_signal("w-001"))
+    h.fill_entry("w-001")
+    h.submit(trade_signal("w-002", underlying="AMD"))
+    h.fill_entry("w-002")
+    h.submit(trade_signal("w-003", underlying="AAPL"))
+    h.run_until(lambda: len(h.intents(kind="entry")) == 3)
+    third = h.intents(kind="entry")[-1]
+    assert (third["status"], third["rule"]) == ("rejected", "weekly_entry_limit")
+
+    # next Monday the counter starts again (closed positions still count for their own week)
+    h.at(utc(2026, 10, 26, 14, 30))
+    h.submit(
+        trade_signal(
+            "w-004",
+            underlying="AAPL",
+            created_at="2026-10-26T13:00:00Z",
+            valid_until="2026-10-26T19:55:00Z",
+        )
+    )
+    h.fill_entry("w-004")
+
+
+def test_rejected_entries_do_not_use_up_the_weekly_limit(tmp_path):
+    h = make_harness(tmp_path, max_entries_per_week=1)
+    h.submit(trade_signal("w-001", max_premium_usd=1))  # too small for one contract
+    h.run_until(lambda: h.intents(kind="entry"))
+    assert h.intent(kind="entry")["status"] == "rejected"
+    h.submit(trade_signal("w-002"))
+    h.fill_entry("w-002")
+
+
 def test_auto_producer_in_live_mode_uses_the_real_broker(tmp_path):
     h = live_harness(tmp_path)
     h.submit(trade_signal())
@@ -1070,3 +1170,19 @@ def test_failed_exit_is_retried_only_after_backoff(h):
     close_position(h)
     statuses = [i["status"] for i in h.intents(kind="exit")]
     assert statuses == ["error", "filled"]
+
+
+def test_weekly_entry_limit_counts_real_and_shadow_entries_separately(tmp_path):
+    producers = [
+        Producer(
+            id="momentum-agent",
+            status="auto",
+            budget_usd=1000,
+            paper_only_strategies=["bear_put_spread"],
+        )
+    ]
+    h = live_harness(tmp_path, producers=producers, spots={"AMD": 40.0}, max_entries_per_week=1)
+    h.submit(trade_signal("bear-001", underlying="AMD", strategy="bear_put_spread"))
+    assert h.fill_entry("bear-001")["shadow"] == 1
+    h.submit(trade_signal("bull-001"))
+    assert h.fill_entry("bull-001")["shadow"] == 0
