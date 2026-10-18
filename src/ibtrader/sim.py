@@ -180,11 +180,28 @@ class SimBroker:
         state = order.state if order.state in ("filled", "cancelled", "rejected") else "working"
         return BrokerOrderStatus(state, order.filled, order.avg_price)  # type: ignore[arg-type]
 
-    def find_by_ref(self, order_ref: str) -> str | None:
+    def _by_ref(self, order_ref: str) -> str | None:
         for order_id, order in self.orders.items():
             if order.order_ref == order_ref:
                 return order_id
         return None
+
+    def find_by_ref(self, order_ref: str) -> str | None:
+        """Working orders only, like IBKR's openTrades()."""
+        order_id = self._by_ref(order_ref)
+        if order_id is None or self.poll(order_id).state != "working":
+            return None
+        return order_id
+
+    def lookup_final(self, order_ref: str) -> BrokerOrderStatus | None:
+        order_id = self._by_ref(order_ref)
+        if order_id is None:
+            return None
+        status = self.poll(order_id)
+        return None if status.state == "working" else status
+
+    def reset(self) -> None:
+        pass  # simulated orders keep their state in memory
 
     def positions(self) -> dict[int, float]:
         out: dict[int, float] = {}

@@ -152,7 +152,8 @@ session.
 ## Operations
 
 `ibtrader status | scorecard | kill on|off | producer pause|resume <id> | approve|reject <id> |
-reconcile`. See [docs/RUNBOOK.md](docs/RUNBOOK.md) for start/stop, kill switch, crash
+reconcile | intent resolve <id> | position close <id>`. After a restart or reconnect, orders that
+finished meanwhile are booked from IBKR automatically; the rest are fixed with `intent resolve`. See [docs/RUNBOOK.md](docs/RUNBOOK.md) for start/stop, kill switch, crash
 recovery and reconciliation.
 
 ## Repository layout
@@ -181,6 +182,9 @@ make lint      # ruff check + format check
 make test      # pytest
 make schema    # regenerate the JSON Schema after changing contract models
 ```
+
+Dependencies: `pyproject.toml` holds the supported ranges, and `constraints.txt` holds the exact
+versions the test suite passed with. The Dockerfile and CI install with `-c constraints.txt`.
 
 CI (`.github/workflows/ci.yml`) runs lint, tests, checks that the schema is up to date, and
 validates the example signals.

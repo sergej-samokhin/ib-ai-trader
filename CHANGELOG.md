@@ -5,6 +5,14 @@
 - Session calendar now uses `pandas_market_calendars` (NYSE) instead of a hand-written
   2026-2027 holiday table; the 2026-2027 dates are pinned in the tests.
 - `docs/RELATED_PROJECTS.md`: survey of related open-source repositories.
+- Recovery books orders that finished while the trader was away (IBKR completed orders and
+  executions of the current day) and runs again after every reconnect.
+- `ibtrader intent resolve` and `ibtrader position close` replace the SQL workaround for
+  correcting the store.
+- One alert per IBKR outage (`IBKR connection lost`, reminder every 30 min, `connection restored`);
+  signal ingestion keeps running while disconnected.
+- Pins: `ib_async>=2.1,<2.2`, `pandas_market_calendars>=5.5,<6`, exact tested versions in
+  `constraints.txt` (CI and Docker), gateway image pinned by tag and digest.
 
 ## 0.1.0 – 2026-10-18
 

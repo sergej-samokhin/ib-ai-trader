@@ -150,6 +150,9 @@ Notifications (always logged; Telegram if `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHA
 | `Exit not yet filled` | warning | exit order is working at the natural price |
 | `Order submission failed` | error | broker call raised; intent status `error` |
 | `Order state unknown after restart` | error | see section 8 |
+| `IBKR connection lost` / `IBKR still disconnected` / `IBKR connection restored` | critical / critical / warning | see section 10 |
+| `Position closed manually` | warning | `ibtrader position close` was used |
+| `Ingestion error` | error | a transport adapter raised while polling |
 | `Loop error`, `Trader error` | error | exception in the loop or in a tick step |
 | `Daily summary <date>` | info | once per trading day |
 
@@ -258,32 +261,43 @@ Procedure:
 
 1. Check whether you need the kill switch (`ibtrader kill on`). It acts once the trader is running again.
 2. Make sure IB Gateway is up and logged in.
-3. **If orders may have been working or may have filled while the trader was down, run `ibtrader reconcile` before
-   starting the trader** (section 9). The position monitor acts on the first tick, and the recovery below does
-   not detect fills that happened during the downtime.
-4. Start the trader (`ibtrader run` or `docker compose up -d`). Keep `IB_CLIENT_ID` unchanged: orders placed through the API belong to the client id that placed them, and re-attaching depends on it.
-5. Read the recovery results (audit events `order_reattached`, `order_unknown`; notification `Order state unknown after restart`).
+3. Start the trader (`ibtrader run` or `docker compose up -d`). Keep `IB_CLIENT_ID` unchanged: orders placed
+   through the API belong to the client id that placed them, and re-attaching depends on it.
+4. Read the recovery results: audit events `order_reattached`, `order_recovered`, `order_unknown`, and the
+   notification `Order state unknown after restart`.
+5. If the trader was down across a trading-day boundary, run `ibtrader reconcile` (section 9).
 
-What `Trader.recover` does at startup, for every intent with status `submitted`:
+What `Trader.recover` does at startup and after every reconnect, for every intent with status `submitted`:
 
 | Intent | Action |
 |---|---|
-| simulated (shadow) order | status `cancelled`, reason `simulated order lost on restart` (simulated orders are dropped) |
-| real order found among the open orders at IBKR by `orderRef` | re-attached (`broker_order_id` updated, audit `order_reattached`) and managed as before |
-| real order not found | status `unknown`, audit `order_unknown`, notification asking for manual reconciliation |
+| simulated (shadow) order | status `cancelled`, reason `simulated order lost on restart` |
+| still working at IBKR (found among open orders by `orderRef`) | re-attached (audit `order_reattached`), managed as before |
+| finished at IBKR while we were away, and IBKR reports it (completed orders and executions of the current trading day) | booked as if seen live: a fill creates the position or closes it with realised P&L; a cancel without fill becomes `cancelled`. Audit `order_recovered`. |
+| not reported by IBKR, or a fill without a usable price (for example a spread with only leg executions) | status `unknown`, audit `order_unknown`, notification with the resolve command |
+
+IBKR reports executions only for the current trading day. If the trader was down overnight, fills from the
+previous day are not visible and those intents become `unknown`.
 
 Intents in `awaiting_approval` and `approved` carry on (approval deadlines are stored).
 
-**Intents marked `unknown` need manual reconciliation.** The order is no longer open at IBKR, but the trader does
-not know whether it filled, was cancelled or was rejected. Nothing retries an `unknown` intent. An `unknown`
-exit blocks further exits for that position, and an `unknown` entry counts as open risk, until you resolve it. For each one, look at the order history in TWS (or the IBKR activity report), match it by `order_ref` (query in section 16), then:
+**Resolving `unknown` intents.** Nothing retries an `unknown` intent. An `unknown` exit blocks further exits for
+that position, and an `unknown` entry counts as open risk, until you resolve it. Look the order up in TWS (or the
+IBKR activity report) by its `order_ref` (query in section 16), then:
 
-| What happened at IBKR | What to do |
+```bash
+ibtrader intent resolve int_xxxxxxxxxxxx --filled 0                 # did not fill
+ibtrader intent resolve int_xxxxxxxxxxxx --filled 2 --price 2.45    # filled (net price per share for spreads)
+```
+
+| What happened at IBKR | Effect of `intent resolve` |
 |---|---|
-| Entry order cancelled or never filled | Set the intent to `cancelled` (section 9, "Correcting the store") so it no longer counts as open risk. |
-| Entry order filled | There is no position record, so ibtrader does not manage it: no take profit, stop loss or time exit. v0.1 cannot import it. Close it manually in TWS, or manage it manually. |
-| Exit order filled | The store still shows the position as open. The `unknown` exit blocks new exits for it, but the position and P&L are wrong until you correct the store (section 9, "Correcting the store"). |
-| Exit order cancelled | Set the intent to `cancelled`; the monitor then creates a new exit. |
+| Entry not filled | intent `cancelled`; no longer counts as open risk |
+| Entry filled (fully or partly) | position created with the given quantity and price; exits are managed from now on |
+| Exit filled | position closed or reduced; realised P&L booked (daily loss limit, scorecard) |
+| Exit not filled | intent `cancelled`; the monitor creates a new exit on its next run |
+
+Each resolution is audited as `manual_intent_resolved` with `--by` (default `operator`).
 
 ## 9. Reconciling with IBKR
 
@@ -328,31 +342,22 @@ Look up a `conId` in your TWS portfolio view or in `positions.legs`:
 When to run it: after every restart with `unknown` intents or after a crash, after any manual action in
 TWS, and daily after the close (section 11).
 
-### Correcting the store (unsupported last resort)
+### Correcting the store
 
-There is no CLI command to close, forget or adopt a position. If a position was closed at IBKR but the
-store still shows it open, the monitor would try to close it again. With the trader **stopped**:
+If a position was closed outside ibtrader (for example by hand in TWS), book the close:
 
 ```bash
-sqlite3 var/ibtrader.sqlite3 ".backup var/backup-before-fix.sqlite3"
-sqlite3 var/ibtrader.sqlite3 <<'SQL'
-UPDATE positions SET status = 'closed', quantity = 0, closed_at = '2026-10-19T20:05:00+00:00'
- WHERE id = 'pos_xxxxxxxxxxxx' AND status = 'open';
-INSERT INTO audit_log (ts, event, data)
- VALUES ('2026-10-19T20:05:00+00:00', 'manual_store_correction',
-         '{"position_id": "pos_xxxxxxxxxxxx", "note": "closed at IBKR, store corrected by hand"}');
-SQL
+ibtrader position close pos_xxxxxxxxxxxx --price 0.85              # all contracts, net credit per share
+ibtrader position close pos_xxxxxxxxxxxx --price 0.85 --quantity 1 # partial
 ```
 
-To resolve an `unknown` intent (section 8), the same pattern applies:
+This writes the realised P&L (so the daily loss limit and the scorecard stay right), cancels `unknown` or
+not-yet-submitted exit intents of that position, audits `manual_position_closed` and sends a notification. It
+refuses while an exit order for the position is still working at IBKR: cancel that order in TWS first and let
+the trader process the cancel. Then run `ibtrader reconcile` again.
 
-```sql
-UPDATE intents SET status = 'cancelled', reason = 'reconciled by hand: not filled at IBKR'
- WHERE id = 'int_xxxxxxxxxxxx' AND status = 'unknown';
-```
-
-Use the real UTC time. No `pnl_events` row is written, so the realised P&L of that position is missing from the daily
-loss limit and the scorecard. Then run `ibtrader reconcile` again. The `audit_log` table accepts inserts but rejects UPDATE and DELETE.
+Positions that exist at IBKR but not in the store (opened outside ibtrader) still cannot be imported. Manage
+them in TWS, or use a dedicated account for ibtrader.
 
 ## 10. IB Gateway re-authentication and IBC
 
@@ -368,11 +373,16 @@ has no maintained upstream; options and the fork under evaluation are listed in
 
 When the gateway is down or not yet authenticated:
 
-- Each loop iteration tries to reconnect (5 attempts with 2, 4, 8 and 16 second waits), then raises and sends the
-  notification `Loop error`. Expect repeated `Loop error` notifications; there is no de-duplication.
-- While disconnected the loop skips the entire tick and the file-drop poll. The kill switch is not processed, exits and approvals do not run, and file-drop signals wait in the inbox. The HTTP adapter keeps accepting and storing signals.
+- Each loop iteration tries to reconnect (5 attempts with 2, 4, 8 and 16 second waits).
+- Alerts: one `IBKR connection lost` (critical) per outage, a reminder `IBKR still disconnected` every 30
+  minutes, and `IBKR connection restored` when it is back. Audit events `connection_lost` and
+  `connection_restored`.
+- While disconnected the trading tick is skipped: no entries, exits, approvals, repricing or kill-switch
+  processing (no order actions without a broker). Signal ingestion keeps running (file drop and HTTP), and
+  signals are acknowledged as usual.
 - Orders already at IBKR stay there.
-- When the connection returns, the loop resumes without running recovery.
+- When the connection returns, cached order handles are dropped and recovery runs (section 8) before the
+  next tick: working orders are re-attached, orders that finished in the meantime are booked.
 
 Plan the weekly authentication outside the session. Afterwards check the log for `connected to IBKR`, then
 `ibtrader status`.
@@ -464,9 +474,10 @@ First move in any doubt: `ibtrader kill on --reason "<why>"`, then investigate. 
 
 ### IB Gateway disconnected
 
-Symptoms: `IBKR disconnected, reconnecting`, repeated `Loop error`. Consequences: section 10. Fix the gateway
-(login, second factor, restart). The loop reconnects by itself. Afterwards run `ibtrader status` and, if
-orders were working, `ibtrader reconcile`. If it was long, check for `unknown` intents.
+Symptoms: notification `IBKR connection lost`, log `IBKR disconnected, reconnecting`. Consequences: section 10.
+Fix the gateway (login, second factor, restart; with IBC check its log). The loop reconnects by itself and
+runs recovery. Afterwards run `ibtrader status`; resolve any `unknown` intents (section 8); if the outage
+crossed a trading-day boundary, run `ibtrader reconcile`.
 
 ### Order rejected by IBKR
 

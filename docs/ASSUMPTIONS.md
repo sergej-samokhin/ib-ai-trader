@@ -16,7 +16,7 @@ the owner's wishes; they are the defaults the code ships with.
 | 2 | Strategy set | **Debit only**: `long_call`, `long_put`, `bull_call_spread`, `bear_put_spread`. No credit spreads, no naked shorts. Adding a strategy requires changes to the contract, selector, risk engine and docs. | `contract/models.py` (`Strategy`), `selector.py` | open for confirmation by the account owner |
 | 3 | Conflict policy | **Reject the newer signal.** A new `trade` or `rule` with the opposite direction on the same underlying as an active signal (`pending` or `active`) or an open position of a **different** producer is rejected with reason `conflict` and the operator is notified. Same-producer opposite signals are not conflicts. No netting, no priority by producer. | `gateway.py` (`_conflict`) | open for confirmation by the account owner |
 | 4 | Capital and limits | **Placeholders only.** `.env.example` holds placeholder values (the code defaults are the same: `MAX_POSITION_USD=500`, `MAX_PORTFOLIO_RISK_USD=2000`, `MAX_OPEN_POSITIONS=5`, `MAX_DAILY_LOSS_USD=300`, `MAX_UNDERLYING_EXPOSURE_USD=1000`, `MIN_OPEN_INTEREST=100`, `MAX_BID_ASK_SPREAD_PCT=10`, `NO_ENTRY_OPEN_MINUTES=15`, `NO_ENTRY_CLOSE_MINUTES=15`, `MANUAL_APPROVAL_ABOVE_USD=400`). Per-producer budgets (`budget_usd`, default 500) are placeholders too. The account owner must set the real values. The number N of paper trades required before go-live is not defined either. | `.env.example`, `config.py` (`RiskLimits`), `config/producers.example.yaml` | open for confirmation by the account owner |
-| 5 | Hosting | **Not decided.** A `Dockerfile` and `docker-compose.yml` (community IB Gateway image with IBC plus ibtrader) are provided as a starting point; the image must be reviewed and pinned. Region, who maintains IB Gateway and who performs the weekly re-authentication are not decided. | `docker-compose.yml`, `Dockerfile` | open for confirmation by the account owner |
+| 5 | Hosting | **Not decided.** A `Dockerfile` and `docker-compose.yml` (community IB Gateway image with IBC plus ibtrader) are provided as a starting point; the image is pinned by tag and digest and must still be reviewed. Region, who maintains IB Gateway and who performs the weekly re-authentication are not decided. | `docker-compose.yml`, `Dockerfile` | open for confirmation by the account owner |
 | 6 | Notifications | The log channel is **always** on. **Telegram** (needs `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`) and **SMTP email** (needs `SMTP_HOST` and `NOTIFY_EMAIL_TO`; STARTTLS) are optional and independent. Notifications are outbound only; no commands can be given through them. | `notify.py`, `config.py` | open for confirmation by the account owner |
 
 ## B. Assumptions to verify during integration
@@ -49,8 +49,9 @@ the owner's wishes; they are the defaults the code ships with.
 | 13 | **Order status mapping.** `Filled` is filled; `Cancelled` and `ApiCancelled` are cancelled; `Inactive` is rejected; every other status is treated as working. | `ibkr.py` (`poll`) | Unusual statuses (for example pending cancel for a long time) keep an order "working". | Exercise cancel and reject paths on paper. |
 | 14 | **Recovery needs the same `IB_CLIENT_ID`.** Working orders are found through the open orders of the connection; only orders that belong to the client id are expected to be visible. `ibtrader reconcile` uses the same client id and so cannot run while the trader is connected. | `app.py` (`recover`), `ibkr.py`, `cli.py` | Orders are not re-attached; `reconcile` fails to connect. | Restart with a working order on paper. Run `reconcile` with another `IB_CLIENT_ID`. |
 | 15 | **Ticker symbols.** The contract pattern allows tickers such as `BRK.B`. The adapter builds `Stock(symbol, "SMART", "USD")` with the symbol unchanged. IBKR may write share-class symbols differently (for example with a space). | `contract/models.py` (`Ticker`), `ibkr.py` (`_stock`) | Signals for such underlyings are accepted but fail at contract qualification. | Test every non-trivial ticker on paper. |
-| 16 | **Docker relay ports and IBC.** The gateway image relays the API on 4003 (live) and 4004 (paper); this is confirmed by the image README (2026-10-18). The image bundles IBC, which was **retired and archived on 2026-09-01** (see [RELATED_PROJECTS.md](RELATED_PROJECTS.md)). | `docker-compose.yml` | An image change breaks connectivity; an IBKR Gateway change can break the unmaintained IBC login automation. | Pin the image digest; test the connection on paper; decide the login strategy under open question 5. |
+| 16 | **Docker relay ports and IBC.** The gateway image relays the API on 4003 (live) and 4004 (paper); this is confirmed by the image README (2026-10-18). The image bundles IBC, which was **retired and archived on 2026-09-01** (see [RELATED_PROJECTS.md](RELATED_PROJECTS.md)). | `docker-compose.yml` | An image change breaks connectivity; an IBKR Gateway change can break the unmaintained IBC login automation. | Image pinned by tag and digest (10.50.1f). Test the connection on paper. Decided 2026-10-18: keep IBC while it works; fallback is manual login. |
 | 17 | **Quotes.** A quote is two-sided when bid is not negative and ask is positive; mid is the average. IBKR "no data" values (`-1`, NaN) are mapped to missing. | `domain.py`, `ibkr.py` (`_num`) | A genuine bid of 0 is kept (valid), a missing one is not distinguishable from a stale one. | Observe quotes for far out-of-the-money options. |
+| 18 | **Recovered fills.** `lookup_final` takes the net price of a spread from BAG-level executions and the order status from completed orders that IBKR sends at connect time. If only leg executions exist for a spread, the intent stays `unknown`. | `ibkr.py` (`lookup_final`) | Wrong or missing net price for recovered spread fills. | On paper: fill a spread while the trader is stopped, restart, check `order_recovered` and the booked price. |
 
 ## C. Known limitations of v0.1
 
@@ -68,7 +69,8 @@ Verified against the code. Items marked **(spec)** deviate from, or only partly 
 - **Approvals are CLI only.** No approval by Telegram or email; the requests are sent as notifications.
 - **A paused producer's `exit` documents are rejected** (`producer_paused`), while its position
   monitoring continues. Pausing does not cancel intents already approved, awaiting approval or working.
-- **No heartbeat, watchdog or metrics.** Repeated `Loop error` notifications are not de-duplicated.
+- **No heartbeat, watchdog or metrics.** IBKR outages alert once, remind every 30 minutes and report the
+  recovery (`health.ConnectionWatch`); other repeated `Loop error` notifications are not de-duplicated.
 - **Single process, single thread.** One loop does ingestion polling, evaluation, order management
   and monitoring. Market-data calls block it (about 2.5 s per quote batch). SQLite, no high availability.
   HTTP requests are handled in extra threads that only call the gateway.
@@ -80,14 +82,15 @@ Verified against the code. Items marked **(spec)** deviate from, or only partly 
 
 ### Positions, recovery and reconciliation
 
-- **No automatic import of pre-existing IBKR positions**, and no command to adopt, close or forget a
-  position in the store. `ibtrader reconcile` is read-only and compares options only. Positions that
-  exist at IBKR but not in the store are never managed (no exits).
-- **Recovery does not detect fills that happened while the trader was down.** Orders that are no
-  longer open at IBKR become `unknown`; entry fills are then not recorded as positions, and an exit
-  fill leaves the position open in the store. An `unknown` *exit* intent blocks further exits for that
-  position until the operator reconciles it (so a position is never sold twice); an `unknown` *entry* is
-  counted as open risk (conservative).
+- **No automatic import of pre-existing IBKR positions.** Positions opened outside ibtrader are never
+  managed (no exits). `ibtrader reconcile` is read-only and compares options only. Known positions closed
+  outside ibtrader are booked with `ibtrader position close`.
+- **Recovery sees only the current IBKR trading day.** After a restart or reconnect, orders that finished
+  meanwhile are booked from IBKR's completed orders and executions (`IBKRBroker.lookup_final`). IBKR
+  reports executions for the current day only, so after an overnight outage such intents become
+  `unknown`; the operator resolves them with `ibtrader intent resolve`. An `unknown` *exit* blocks
+  further exits for that position (so a position is never sold twice); an `unknown` *entry* counts as
+  open risk.
 - After a rejected or failed exit order (no fill) the monitor waits 300 s (`EXIT_RETRY_BACKOFF_SECONDS`
   in `app.py`) before creating a new one; it retries indefinitely at that pace.
 - Simulated (shadow) orders are dropped at restart; their positions are kept.

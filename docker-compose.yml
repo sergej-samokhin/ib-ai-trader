@@ -1,8 +1,10 @@
 # IB Gateway (with IBC for automated login/restarts) + ibtrader.
-# The gateway image is a community image - review it before use and pin a digest.
+# The gateway image is a community image - review it before use.
+# Pinned by tag AND digest (Gateway 10.50.1f with bundled IBC = `stable` on 2026-10-18; digest of
+# the multi-arch index read from ghcr.io that day). Update both together, then re-test on paper.
 services:
   ib-gateway:
-    image: ghcr.io/gnzsnz/ib-gateway:stable
+    image: ghcr.io/gnzsnz/ib-gateway:10.50.1f@sha256:1e2236804ac949b789197c225a048c0c891c9958f948c87166226e5b647ff581
     restart: unless-stopped
     environment:
       TWS_USERID: ${TWS_USERID}

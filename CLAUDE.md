@@ -22,6 +22,11 @@ ibtrader run --demo              # full loop on synthetic data, nothing reaches 
 
 CI fails if the committed JSON Schema differs from the generated one.
 
+Dependencies: ranges in `pyproject.toml`, exact tested versions in `constraints.txt` (used by CI and
+the Dockerfile). After an upgrade, regenerate it from a clean venv (`pip install .` then
+`pip freeze`, without the `ibtrader` line) and run the suite against it. `ib_async` stays pinned to
+a minor version because `ibkr.py` is only verified on paper.
+
 ## Architecture in one paragraph
 
 Transports (`ingestion/filedrop.py`, `ingestion/http.py`) only move raw text to
@@ -32,7 +37,10 @@ thread: kill switch → expire → trades → exit signals → rules (`evaluator
 order management (`orders.py`) → position monitor (`monitor.py`) → daily summary. Every entry
 passes `selector.select` and then `RiskEngine.check_entry` (`risk.py`). Brokers and market data
 sit behind protocols (`orders.Broker`, `marketdata.MarketData`) with an IBKR implementation
-(`ibkr.py`) and a simulation (`sim.py`). The state lives in SQLite (`store.py`), and every
+(`ibkr.py`) and a simulation (`sim.py`). The CLI loop calls `app.run_iteration`: ingestion always runs,
+and the tick runs only while connected (`health.ConnectionWatch` alerts once per outage). After a
+reconnect, `Trader.on_reconnect` resets order handles and re-runs `recover()`, which books orders
+that finished meanwhile (`Broker.lookup_final`). The state lives in SQLite (`store.py`), and every
 decision is written through `Audit` (`audit.py`) to the append-only `audit_log` table and to
 JSON logs.
 
@@ -56,6 +64,8 @@ JSON logs.
 - Each IBKR `orderRef` carries `producer|signal_id|v<version>|intent_id`. `recover()` relies
   on it.
 - Every rejection carries a rule id; feedback goes back to the producer via the feedback sinks.
+- **No order actions while disconnected.** Never run `tick()` without a live broker. Manual
+  corrections (`resolve_intent`, `close_position_manually`) are audited and refuse ambiguous states.
 
 ## Conventions
 

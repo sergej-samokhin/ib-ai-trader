@@ -65,8 +65,9 @@ Options:
    limited manual check up to the login window. **Not reviewed; unproven.**
 3. Accept manual login after each forced re-authentication, with alerting on disconnect.
 
-This decision belongs with spec open question 5 (hosting and who owns Gateway maintenance), see
-[ASSUMPTIONS.md](ASSUMPTIONS.md).
+**Decision (2026-10-18, account owner): option 1.** Keep the bundled IBC while it works. Re-evaluate
+when it breaks after a Gateway update, or when gnzsnz ships a replacement (issue #366). Option 3
+(manual login plus disconnect alerting) is the fallback.
 
 ## References (not dependencies)
 

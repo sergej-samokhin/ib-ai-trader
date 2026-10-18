@@ -43,6 +43,13 @@ class Broker(Protocol):
     def find_by_ref(self, order_ref: str) -> str | None:
         """Re-attach to a working order after a restart."""
 
+    def lookup_final(self, order_ref: str) -> BrokerOrderStatus | None:
+        """Final state of an order that is no longer working (filled / cancelled while we were
+        away). None if the broker has no record of it."""
+
+    def reset(self) -> None:
+        """Drop cached order handles (after a reconnect they are stale)."""
+
     def positions(self) -> dict[int, float]:
         """conId -> signed quantity, for reconciliation."""
 
