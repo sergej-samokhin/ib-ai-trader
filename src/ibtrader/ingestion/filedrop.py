@@ -86,10 +86,9 @@ class FileDropAdapter:
         """Append one JSON line per event to outbox/<producer>/<signal_id>.jsonl."""
         target_dir = self.outbox / producer_id
         if not target_dir.is_dir():
-            if self.inbox.joinpath(producer_id).is_dir():
-                target_dir.mkdir(parents=True, exist_ok=True)
-            else:
+            if self.gateway.registry.get(producer_id) is None:
                 return  # never create directories for unknown identities
+            target_dir.mkdir(parents=True, exist_ok=True)
         name = payload.get("signal_id") or Path(payload.get("file", "unknown")).stem
         safe = "".join(ch for ch in str(name) if ch.isalnum() or ch in "._-")[:128] or "unknown"
         line = json.dumps({"at": utcnow().isoformat(), **payload}, default=str)

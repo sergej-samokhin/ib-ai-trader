@@ -28,9 +28,9 @@ MAX_PERIOD = 200
 
 BASE_INDICATORS = frozenset({"close", "open", "high", "low", "volume", "prev_close"})
 PERIOD_INDICATORS = frozenset({"sma", "ema", "rsi", "avg_volume"})
-_PERIOD_RE = re.compile(r"^(sma|ema|rsi|avg_volume)_(\d{1,3})$")
+_PERIOD_RE = re.compile(r"^(sma|ema|rsi|avg_volume)_([0-9]{1,3})$")
 _TOKEN_RE = re.compile(
-    r"\s*(?:(?P<num>\d+(?:\.\d+)?)|(?P<name>[a-z][a-z0-9_]*)|(?P<op><=|>=|==|!=|<|>|[-+*/()]))"
+    r"\s*(?:(?P<num>[0-9]+(?:\.[0-9]+)?)|(?P<name>[a-z][a-z0-9_]*)|(?P<op><=|>=|==|!=|<|>|[-+*/()]))"
 )
 _CMP_OPS = {"<", "<=", ">", ">=", "==", "!="}
 _KEYWORDS = {"and", "or", "not"}
