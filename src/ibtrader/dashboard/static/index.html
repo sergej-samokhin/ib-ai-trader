@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>ibtrader dashboard</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <h1 class="brand">ibtrader dashboard</h1>
+      <div class="top-status">
+        <span id="mode-badge" class="badge badge-neutral">MODE …</span>
+        <span id="kill-badge" class="badge badge-neutral" hidden>KILL SWITCH</span>
+        <span class="updated">Updated <span id="last-updated">—</span></span>
+        <button type="button" id="refresh-button" class="btn btn-ghost">Refresh</button>
+      </div>
+    </div>
+    <nav class="tabs" aria-label="Sections" id="tabs">
+      <a href="#overview" data-tab="overview" class="tab">Overview</a>
+      <a href="#trading" data-tab="trading" class="tab">Trading</a>
+      <a href="#signals" data-tab="signals" class="tab">Signals</a>
+      <a href="#audit" data-tab="audit" class="tab">Audit</a>
+      <a href="#radar" data-tab="radar" class="tab">WSB Radar</a>
+    </nav>
+  </header>
+
+  <main class="page">
+    <div id="error-banner" class="banner banner-error" role="alert" hidden></div>
+    <div id="live-banner" class="banner banner-live" role="status" hidden>LIVE MODE: orders reach the live Interactive Brokers account.</div>
+    <div id="kill-banner" class="banner banner-kill" role="alert" hidden>KILL SWITCH ACTIVE: working entry orders are cancelled and no new entries are placed. Exits stay allowed.</div>
+    <div id="nodb-banner" class="banner banner-info" role="status" hidden>No trading database yet (run ibtrader once)</div>
+
+    <section id="tab-overview" class="tab-panel" hidden aria-label="Overview">
+      <div class="tiles" id="pnl-tiles"></div>
+      <h2 class="section-title">Shadow P&amp;L <span class="muted">shadow (simulated)</span></h2>
+      <div class="tiles" id="shadow-tiles"></div>
+      <h2 class="section-title">Counts</h2>
+      <div class="tiles" id="count-tiles"></div>
+      <h2 class="section-title">Paused producers</h2>
+      <div id="paused-box"></div>
+      <h2 class="section-title">Producer scorecard</h2>
+      <div id="scorecard-box"></div>
+    </section>
+
+    <section id="tab-trading" class="tab-panel" hidden aria-label="Trading">
+      <h2 class="section-title">Open positions</h2>
+      <div id="positions-box"></div>
+      <h2 class="section-title">Open intents</h2>
+      <div id="intents-box"></div>
+    </section>
+
+    <section id="tab-signals" class="tab-panel" hidden aria-label="Signals">
+      <h2 class="section-title">Active signals</h2>
+      <div id="signals-box"></div>
+    </section>
+
+    <section id="tab-audit" class="tab-panel" hidden aria-label="Audit">
+      <h2 class="section-title">Audit events</h2>
+      <div class="toolbar">
+        <label class="field"><span>Filter</span><input type="search" id="audit-filter" placeholder="Filter loaded events" autocomplete="off"></label>
+        <label class="field"><span>Limit</span>
+          <select id="audit-limit">
+            <option value="100">100</option>
+            <option value="250">250</option>
+            <option value="500">500</option>
+          </select>
+        </label>
+        <span class="muted" id="audit-count"></span>
+      </div>
+      <div id="audit-box"></div>
+    </section>
+
+    <section id="tab-radar" class="tab-panel" hidden aria-label="WSB Radar">
+      <div id="synthetic-banner" class="banner banner-synthetic" role="status" hidden>SYNTHETIC DEMO DATA: invented numbers, not real Reddit activity.</div>
+      <div class="toolbar">
+        <button type="button" id="scan-button" class="btn btn-primary">Scan now</button>
+        <label class="check"><input type="checkbox" id="demo-toggle"> <span>Demo data</span></label>
+        <span class="muted" id="scan-message" role="status"></span>
+      </div>
+      <div id="radar-box"></div>
+      <p class="disclaimer">Discussion activity in a partial sample, not investment advice. Sentiment is a rule-based baseline.</p>
+    </section>
+  </main>
+  <noscript><p class="page">This dashboard needs JavaScript.</p></noscript>
+</body>
+</html>
