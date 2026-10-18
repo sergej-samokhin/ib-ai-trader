@@ -7,6 +7,7 @@ import json
 import logging
 import signal as _signal
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -318,6 +319,77 @@ def cmd_run(args) -> int:
     return 0
 
 
+def _radar(args, settings: Settings):
+    from ibtrader.radar.config import load_radar_settings
+    from ibtrader.radar.service import Radar
+
+    env = Path(args.env_file) if args.env_file else Path(".env")
+    return Radar(load_radar_settings(dotenv=env), settings.data_dir / "radar")
+
+
+def cmd_radar(args) -> int:
+    """WSB radar (producer side, phase 0): one scan or the current snapshot."""
+    settings = _settings(args)
+    radar = _radar(args, settings)
+    if args.action == "scan":
+        if not radar.settings.enabled:
+            print("radar disabled: set RADAR_ENABLED=true", file=sys.stderr)
+            return 2
+        ok = radar.scan(utcnow())
+        _print(radar.snapshot(utcnow())["status"])
+        return 0 if ok else 1
+    snap = radar.snapshot(utcnow())
+    top = [
+        {
+            k: row.get(k)
+            for k in (
+                "ticker",
+                "mentions_24h",
+                "sentiment",
+                "attention_z",
+                "attention_accel",
+                "unique_authors",
+                "rank",
+            )
+        }
+        for row in snap["tickers"][: args.top]
+    ]
+    _print(
+        {k: snap[k] for k in ("enabled", "mode", "status", "metrics", "coverage")} | {"top": top}
+    )
+    return 0
+
+
+def cmd_dashboard(args) -> int:
+    """Serve the local dashboard; optionally run the radar scheduler in the same process."""
+    settings = _settings(args)
+    setup_logging(settings.log_file.with_name("dashboard.jsonl"))
+    from ibtrader.dashboard.server import serve
+    from ibtrader.radar.service import run_scheduler
+
+    radar = _radar(args, settings)
+    try:
+        server = serve(settings, radar, utcnow, host=args.host, port=args.port)
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    stop = threading.Event()
+    if radar.settings.enabled and not args.no_scheduler:
+        threading.Thread(
+            target=run_scheduler, args=(radar, stop, utcnow), name="radar", daemon=True
+        ).start()
+    host, port = server.server_address[:2]
+    print(f"dashboard on http://{host}:{port}/ (Ctrl+C to stop)")
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        stop.set()
+        server.server_close()
+    return 0
+
+
 # ------------------------------------------------------------------------------ parser
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="ibtrader", description=__doc__)
@@ -387,6 +459,17 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("reconcile", help="compare stored positions with IBKR positions")
     p.set_defaults(func=cmd_reconcile)
+
+    p = sub.add_parser("radar", help="WSB radar: run one scan or show the snapshot")
+    p.add_argument("action", choices=["scan", "status"])
+    p.add_argument("--top", type=int, default=15, help="tickers shown by 'status'")
+    p.set_defaults(func=cmd_radar)
+
+    p = sub.add_parser("dashboard", help="local web dashboard (read-only) with the radar tab")
+    p.add_argument("--host", default="127.0.0.1", help="loopback address only")
+    p.add_argument("--port", type=int, default=8765)
+    p.add_argument("--no-scheduler", action="store_true", help="do not run hourly radar scans")
+    p.set_defaults(func=cmd_dashboard)
     return parser
 
 

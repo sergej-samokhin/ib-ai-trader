@@ -40,7 +40,9 @@ sit behind protocols (`orders.Broker`, `marketdata.MarketData`) with an IBKR imp
 (`ibkr.py`) and a simulation (`sim.py`). The CLI loop calls `app.run_iteration`: ingestion always runs,
 and the tick runs only while connected (`health.ConnectionWatch` alerts once per outage). After a
 reconnect, `Trader.on_reconnect` resets order handles and re-runs `recover()`, which books orders
-that finished meanwhile (`Broker.lookup_final`). The state lives in SQLite (`store.py`), and every
+that finished meanwhile (`Broker.lookup_final`). The WSB radar (`radar/`) and the local dashboard
+(`dashboard/`) sit outside this loop: the radar is producer-side and emits no signals, the
+dashboard reads the trading database read-only. The state lives in SQLite (`store.py`), and every
 decision is written through `Audit` (`audit.py`) to the append-only `audit_log` table and to
 JSON logs.
 
@@ -64,6 +66,9 @@ JSON logs.
 - Each IBKR `orderRef` carries `producer|signal_id|v<version>|intent_id`. `recover()` relies
   on it.
 - Every rejection carries a rule id; feedback goes back to the producer via the feedback sinks.
+- **Radar and dashboard stay outside the trading core.** Trading modules never import
+  `ibtrader.radar`/`ibtrader.dashboard`; those never import orders, risk, broker or gateway code
+  (`tests/test_dashboard.py`). The dashboard binds loopback only and has no write actions.
 - **No order actions while disconnected.** Never run `tick()` without a live broker. Manual
   corrections (`resolve_intent`, `close_position_manually`) are audited and refuse ambiguous states.
 

@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- `ibtrader dashboard`: local, read-only web dashboard (overview, trading, signals, audit, WSB
+  radar tabs); loopback only, Host/Origin checks, strict CSP.
+- WSB radar (`ibtrader.radar`, `ibtrader radar scan|status`), ported from the WSBRadar
+  prototype: Arctic Shift / Reddit OAuth / RSS / demo sources, ticker extraction against the
+  Nasdaq directory, lexical sentiment, and the daily attention features of the social-momentum
+  strategy (phase 0). It emits no signals. Configured with `RADAR_*` / `REDDIT_*` keys.
+
 - New risk limit `MAX_ENTRIES_PER_WEEK` (rule `weekly_entry_limit`, default 0 = off): caps new
   entries per calendar week (New York, all producers).
 - Signal Contract 1.0, additive: optional `exit.max_holding_days` (1–250 NYSE sessions after the

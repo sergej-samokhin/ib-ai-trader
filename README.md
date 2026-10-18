@@ -160,6 +160,45 @@ reconcile | intent resolve <id> | position close <id>`. After a restart or recon
 finished meanwhile are booked from IBKR automatically; the rest are fixed with `intent resolve`. See [docs/RUNBOOK.md](docs/RUNBOOK.md) for start/stop, kill switch, crash
 recovery and reconciliation.
 
+## Dashboard and WSB radar
+
+```bash
+ibtrader dashboard               # http://127.0.0.1:8765/, read-only, loopback only
+ibtrader radar scan | status     # one radar scan / the current ranking in the terminal
+```
+
+The dashboard has five tabs: **Overview** (mode, kill switch, realised P&L today and this month,
+shadow P&L shown separately, paused producers, scorecard), **Trading** (open positions and
+intents), **Signals**, **Audit** (latest `audit_log` events) and **WSB Radar**. It opens the
+trading database read-only and has no write actions: approvals, the kill switch and corrections
+stay with the audited CLI commands. It has no login, so it binds only to a loopback address; use
+an SSH tunnel to reach it from another machine.
+
+The **WSB radar** (`src/ibtrader/radar/`) is phase 0 of the social-momentum strategy
+([docs/strategy/social-momentum-options.md](docs/strategy/social-momentum-options.md), sections
+3.2, 3.3 and 9): it collects a bounded sample of r/wallstreetbets posts and comments every hour,
+extracts tickers, scores a rule-based sentiment and logs daily attention features
+(`mentions_24h`, `unique_authors`, `breadth`, `rank`, `attention_z`, `attention_accel`). It sends
+**no signals** and places no orders; nothing from Reddit reaches the trading core. When
+`RADAR_ENABLED=true`, `ibtrader dashboard` runs the hourly scan in the same process (disable with
+`--no-scheduler`, e.g. when scans run from cron via `ibtrader radar scan`).
+
+| Key | Default | Meaning |
+|---|---|---|
+| `RADAR_ENABLED` | `false` | allow scans (the tab shows a notice while off) |
+| `RADAR_PROVIDER` | `arctic_shift` | `arctic_shift` (free archive, experimental), `reddit` (OAuth), `rss` (public feed), `demo` (synthetic) |
+| `RADAR_SUBREDDIT` | `wallstreetbets` | |
+| `RADAR_INTERVAL_SECONDS` | `3600` | minimum 600 |
+| `RADAR_RETENTION_DAYS` | `7` | raw posts and comments; daily features are kept 400 days |
+| `RADAR_CATALOG_REFRESH` | `true` | download the Nasdaq symbol directory once a day |
+| `RADAR_ARCTIC_MAX_PAGES` / `_PAGE_SIZE` / `_OVERLAP_SECONDS` / `_TIMEOUT_SECONDS` | `5` / `100` / `1200` / `75` | Arctic Shift bounds |
+| `REDDIT_CLIENT_ID` / `REDDIT_CLIENT_SECRET` / `REDDIT_REFRESH_TOKEN` | empty | Reddit OAuth (approved API access required) |
+| `RADAR_REDDIT_MAX_PAGES` | `2` | pages of 100 per listing |
+
+User names are never stored: the radar keeps a truncated SHA-256 of the lower-cased name to count
+distinct authors. Sentiment is a lexical baseline (negation, sarcasm markers and multi-ticker
+clauses become neutral or uncertain); it is not a language model.
+
 ## Repository layout
 
 ```
@@ -173,6 +212,8 @@ src/ibtrader/
   app.py        Trader orchestration   store.py  SQLite state + audit log
   ibkr.py       ib_async adapters      sim.py    synthetic market data + simulated broker
   cli.py        `ibtrader` command
+  dashboard/    local read-only web dashboard (stdlib server + static UI)
+  radar/        WSB radar: Reddit sample, tickers, sentiment, attention features (no signals)
 docs/           ADR, runbook, assumptions
 examples/       valid / invalid / adversarial signals
 schemas/        generated JSON Schema (CI checks it is current)
