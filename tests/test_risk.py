@@ -135,6 +135,26 @@ def test_daily_loss_limit(engine):
     assert engine.check_entry(entry_request(), portfolio(realized_pnl_today=500.0)).approved
 
 
+def test_monthly_loss_limit(tmp_path):
+    engine = risk_engine(tmp_path, max_monthly_loss_usd=1000.0)
+    decision = engine.check_entry(entry_request(), portfolio(realized_pnl_month=-1000.0))
+    assert (decision.approved, decision.rule) == (False, risk.MONTHLY_LOSS)
+    # one spread costs 110 at natural: 200 of room left this month buys one, not two
+    decision = engine.check_entry(entry_request(), portfolio(realized_pnl_month=-800.0))
+    assert (decision.approved, decision.quantity) == (True, 1)
+
+
+def test_monthly_loss_limit_counts_open_risk_and_nets_profits(tmp_path):
+    engine = risk_engine(tmp_path, max_monthly_loss_usd=1000.0)
+    pf = portfolio(realized_pnl_month=-800.0, premium_at_risk=100.0)
+    decision = engine.check_entry(entry_request(), pf)
+    assert (decision.approved, decision.rule) == (False, risk.MONTHLY_LOSS)
+    assert not engine.check_entry(entry_request(), portfolio(premium_at_risk=1300.0)).approved
+    # profits realised this month offset losses (the limit is on the net)
+    pf = portfolio(realized_pnl_month=500.0, premium_at_risk=1300.0)
+    assert engine.check_entry(entry_request(), pf).quantity == 1
+
+
 def test_max_open_positions(engine):
     decision = engine.check_entry(entry_request(), portfolio(open_positions=5))
     assert (decision.approved, decision.rule) == (False, risk.MAX_OPEN_POSITIONS)

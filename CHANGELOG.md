@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- New risk limit `MAX_MONTHLY_LOSS_USD` (rule `monthly_loss_limit`, placeholder default 3000):
+  rejects entries once the calendar month's net realised P&L reaches minus the limit, and sizes
+  entries so that this P&L minus all premium at risk never falls below it.
 - Session calendar now uses `pandas_market_calendars` (NYSE) instead of a hand-written
   2026-2027 holiday table; the 2026-2027 dates are pinned in the tests.
 - `docs/RELATED_PROJECTS.md`: survey of related open-source repositories.

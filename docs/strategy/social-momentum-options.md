@@ -2,12 +2,13 @@
 
 | | |
 |---|---|
-| Status | **DRAFT v0.2 for review** — not approved, not for live trading |
+| Status | **DRAFT v0.3** — owner decisions of 2026-10-18 incorporated; not yet validated on paper, not for live trading |
 | Owner | Sergej Samokhin |
 | Date | 2026-10-18 |
 | Scope | One upstream producer (`social-momentum`) that emits signals under Signal Contract 1.0 |
 | Capital | **Monthly loss limit €100** (net, per calendar month). Data and tool costs are budgeted separately (section 8). |
 | Changes v0.2 | €100 confirmed as monthly loss limit; data costs on top; data sourcing reworked (Apify / Firecrawl / X API compared, section 3.1 and 8) |
+| Changes v0.3 | Scraping terms-of-service risk accepted; running costs capped at USD 50/month (section 8 reworked); margin account confirmed; monthly loss limit now enforced by the risk engine (`MAX_MONTHLY_LOSS_USD`) |
 
 > This is a strategy design, not investment advice. Options can lose 100 % of the premium paid.
 > Social-media-driven stocks are among the most volatile and most manipulated instruments in the
@@ -31,10 +32,11 @@
    thesis exits (attention collapse, sentiment flip, 10 trading days without progress).
 7. **Monthly loss limit €100 (≈ USD 115):** when the month's net realised P&L minus the max loss
    of open positions reaches −USD 115, no new entries until the next month. The month can
-   therefore never lose more than €100 from trading.
+   therefore never lose more than €100 from trading. Enforced by the risk engine
+   (`MAX_MONTHLY_LOSS_USD=115`, rule `monthly_loss_limit`).
 8. **Expected trade count:** 3–6 per month. Break-even hit rate incl. costs ≈ **45 %**.
-9. **Running costs on top of the loss limit:** ≈ **USD 30/month** for social data and
-   ≈ **USD 50–70/month** all-in (section 8), via a two-stage pipeline (free Reddit/aggregator
+9. **Running costs on top of the loss limit, capped at USD 50/month:** ≈ USD 29 for social data
+   (Apify Starter) plus LLM, IBKR market data and hosting within fixed sub-caps (section 8), via a two-stage pipeline (free Reddit/aggregator
    counts → paid X look-ups via Apify for ~10 candidate tickers per day). The official X API (pay-per-use) would cost ~USD 200+/month for the same
    volume; Firecrawl is not suited for Reddit/X (section 3.1).
 10. **Go-live only after** ≥ 30 paper signals over ≥ 8 weeks meet the gates in section 9.
@@ -113,6 +115,7 @@ rate; the system works in USD).
 | `MAX_PORTFOLIO_RISK_USD` | 80 | |
 | `MAX_OPEN_POSITIONS` | 2 | |
 | `MAX_DAILY_LOSS_USD` | 40 | |
+| `MAX_MONTHLY_LOSS_USD` | 115 | Net realised P&L of the month minus all premium at risk; rule `monthly_loss_limit` (added in v0.3) |
 | `MAX_UNDERLYING_EXPOSURE_USD` | 40 | Effectively one position per name |
 | `MIN_OPEN_INTEREST` | 500 | Stricter than default 100: hype names have thin far-OTM strikes |
 | `MAX_BID_ASK_SPREAD_PCT` | 10 | Per leg; with 0.30–1.00 premiums this is already loose in absolute terms |
@@ -124,10 +127,10 @@ rate; the system works in USD).
 **Gaps in the current system** (need to be handled by the producer or by a code change; see
 section 10):
 
-- There is **no monthly loss limit** and **no weekly entry cap** in `RiskLimits`. Until added,
-  the producer must enforce them and the operator must monitor the monthly P&L (kill switch as
-  fallback). Because the €100 is now the binding guardrail, I recommend adding
-  `MAX_MONTHLY_LOSS_USD` to the risk engine before live trading (section 10, #7).
+- The **monthly loss limit** is enforced by the risk engine (`MAX_MONTHLY_LOSS_USD`, since v0.3).
+  It counts all producers on the account and uses the entry price of open positions as their
+  maximum loss; commissions are not included, so keep a few dollars of headroom in mind.
+- There is **no weekly entry cap** in `RiskLimits`. The producer must enforce it.
 - There is **no earnings / ex-dividend calendar** in the system. The producer must filter these.
 - There is **no "max holding days" exit**. Time-based thesis exits must be sent as `exit` signals.
 
@@ -147,7 +150,7 @@ verified against the vendors' live pricing pages**):
 | Option | What it delivers | Indicative price | Assessment |
 |---|---|---|---|
 | **Apify — X/Twitter actors** (e.g. `apidojo/tweet-scraper`, `kaitoeasyapi` tweet scraper) | Tweets by search query (`$TICKER`), with author and engagement fields | ~USD 0.15–0.40 per 1,000 tweets (pay per result; some actors have minimum results per query) plus Apify plan (free tier ~USD 5 platform credit/month; Starter ~USD 29/month) | **Recommended for X.** ~12–33× cheaper than the official API at our volume. Actors are third-party; quality and continuity vary. |
-| **Apify — Reddit actors** | Posts and comments of a subreddit, with author, score, flair | ~USD 0.50–3.40 per 1,000 results, depending on actor; some charge per run start | **Fallback for Reddit** if the official API is not available; comments are expensive at WSB volume, so scrape posts plus top comments only. |
+| **Apify — Reddit actors** | Posts and comments of a subreddit, with author, score, flair | ~USD 0.50–3.40 per 1,000 results, depending on actor; some charge per run start | Fallback for Reddit only if the cost cap allows (it does not at USD 50/month, section 8). |
 | **Reddit Data API (official, OAuth)** | Posts and comments of r/wallstreetbets | Free tier for low-volume, non-commercial use (rate-limited); terms to be checked | **Recommended for Reddit** (stage 1), if personal use qualifies under the terms. |
 | **Free aggregators** (e.g. ApeWisdom mention ranking) | Pre-computed WSB mention counts and ranks per ticker | Free | **Recommended as stage-1 screen and cross-check.** Methodology and uptime not under our control. |
 | **Firecrawl** | Generic web page → Markdown/JSON scraping, credit-based (Free tier; Hobby ~USD 16/month; stealth mode ~5 credits per page) | — | **Not recommended for Reddit/X.** It is a page scraper, not a social-data API (no search by cashtag, no pagination over comments), and several reports say Firecrawl blocks major social-media domains. Useful for secondary tasks: confirming earnings dates or reading company IR/news pages. |
@@ -161,17 +164,17 @@ verified against the vendors' live pricing pages**):
    Compute `attention_z`, `attention_accel` and `rank_wsb` (section 3.3). Output: at most
    **10 candidate tickers** that pass the universe filters (section 3.6) and A1/A2 or B1/B2.
 2. **Stage 2 (targeted, paid):** for each candidate, pull up to **200 recent tweets** for `$TICKER`
-   via an Apify actor (≈ 2,000 tweets per day, ≈ 44,000 per month) and up to 300 WSB comments on
-   the posts that mention the ticker via the Reddit API (Apify Reddit actor only as fallback —
-   at WSB comment volume it would add ~USD 10–45/month). Compute breadth, `bot_score` and
-   sentiment on this sample.
+   via an Apify actor (≈ 2,000 tweets per day, ≈ 44,000 per month) and up to 100 WSB comments on
+   the posts that mention the ticker via the Reddit API. The Apify Reddit actor is not used: it
+   would break the USD 50 cost cap (section 8). Compute breadth, `bot_score` and sentiment on this
+   sample.
 
 **Legal and terms-of-service note.** Both X and Reddit prohibit unauthorised scraping in their
 terms of service and have taken legal action against scrapers and data resellers. Using a
 third-party Apify actor does not move this risk away from the user of the data. For a personal,
 non-redistributed research use the practical risk is mainly account blocking or the actor ceasing
-to work, but this is **not a legal assessment** — please decide whether you accept it, or whether
-X should come from the official API at higher cost (section 10, #5).
+to work, but this is **not a legal assessment**. **Owner decision (2026-10-18): risk accepted;
+X and Reddit data via Apify/Reddit API as described.**
 
 ### 3.2 Ticker extraction
 
@@ -320,33 +323,42 @@ one full −100 % gap loss costs USD 42.60. Commissions alone are ~6.5 % of each
 
 ---
 
-## 8. Running costs (on top of the €100 loss limit)
+## 8. Running costs (on top of the €100 loss limit, capped at USD 50/month)
 
 These costs are **not** counted against the €100 monthly loss limit (owner decision, v0.2). They
-are tracked separately so that the strategy's true economics stay visible.
+are capped at **USD 50 per month** (owner decision, v0.3) and tracked separately so that the
+strategy's true economics stay visible.
 
 Volume basis: 10 candidate tickers × 200 tweets × ~22 trading days ≈ **44,000 tweets/month**;
-WSB posts and up to 300 comments per candidate via the Reddit API.
+WSB posts plus up to 100 comments per candidate (≈ 22,000 comments/month) via the Reddit API.
 
-| Cost item | Indicative monthly cost (USD) | Basis / status |
+| Cost item | Sub-cap (USD/month) | Basis / status |
 |---|---|---|
-| Apify Starter plan (covers X actor usage) | ~29 | 44,000 tweets × 0.25–0.40 per 1,000 ≈ 11–18 of usage, inside the plan's included usage. Free tier (~5 credit) is too small. **To verify** on apify.com. |
-| Reddit Data API | 0 | Free tier, if personal use qualifies. **To verify** against current terms. |
-| Apify Reddit actor (fallback only) | 0 (10–45 if used) | 22,000–66,000 comments × 0.50–2.00 per 1,000 |
-| Aggregator (stage-1 cross-check) | 0 | Free endpoints |
-| Firecrawl (optional, earnings dates / IR pages) | 0–16 | Free tier likely sufficient; Hobby if not |
-| LLM for sentiment classification | ~5–15 | ~110,000 short texts per month, small model, batched. Estimate to be confirmed in phase 0. |
-| IBKR real-time US option quotes (OPRA) and US securities bundle (non-professional) | ~2–12 | Partly waived above a monthly commission threshold. **To verify** in the account. |
-| Hosting (IB Gateway + producer) | ~5–20 | Small VM. Open (ASSUMPTIONS A.5). |
-| **Total** (without Reddit fallback) | **≈ 41–92, base case ≈ 50–70** | |
+| Apify Starter plan (covers X actor usage) | 29 | 44,000 tweets × 0.25–0.40 per 1,000 ≈ 11–18 of usage, inside the plan's included usage. **To verify** on apify.com. |
+| LLM for sentiment classification | 6 | ≈ 66,000 short texts per month, small model, batched. Confirm the real cost per 1,000 texts in phase 0. |
+| IBKR real-time US option quotes (OPRA) and US securities bundle (non-professional) | 10 | Partly waived above a monthly commission threshold. **To verify** in the account. |
+| Hosting (IB Gateway + producer) | 5 | Smallest VM tier or an existing machine. Open (ASSUMPTIONS A.5). |
+| Reddit Data API, aggregator, Firecrawl free tier | 0 | Free tiers only. **No** paid Firecrawl plan and **no** Apify Reddit actor within the cap. |
+| **Total** | **50** | |
 | *For comparison: official X API instead of Apify* | *~220* | *44,000 posts × 0.005* |
 
-**Consequence:** running costs of USD 50–70 per month are about half of the monthly loss limit.
-At the illustrative economics of section 7 (4 trades per month), the strategy needs an average
-trading profit of roughly USD 12–18 per trade just to cover them. **Recommendation:** run phase 0
-and the paper phase on the cheapest set-up (Apify free tier for a reduced sample, no paid
-Firecrawl), and only move to the full data set once the paper results justify it (gate in
-section 9).
+**Cost guard (producer-side).** The producer records its spend per day (Apify usage from the run
+results, LLM tokens, fixed items pro rata) and projects the month. If the projection exceeds
+USD 50, it degrades in this order and logs each step:
+
+1. Tweets per candidate 200 → 100.
+2. Candidate tickers per day 10 → 5.
+3. X stage off: Reddit-only signals, `confidence` capped at 0.55 so that every entry needs manual
+   approval (`MIN_CONFIDENCE_AUTO` 0.6, section 2.3).
+
+If IBKR market data or hosting alone exceed their sub-caps, the cost guard cannot compensate:
+the operator decides (raise the cap or reduce the set-up).
+
+**Consequence:** USD 50 per month is about 43 % of the monthly loss limit. At the illustrative
+economics of section 7 (4 trades per month), the strategy needs an average trading profit of about
+**USD 12.50 per trade** just to cover running costs. **Recommendation:** run phase 0 and the paper
+phase with the same cost guard, so that the paper results show whether the strategy pays for its
+data.
 
 ---
 
@@ -373,16 +385,17 @@ section 9).
 ## 10. Open points for your decision
 
 These are not assumptions I filled in silently; each needs your input or a check on the account.
+Decided items are kept for traceability.
 
 | # | Question / check | Why it matters |
 |---|---|---|
 | 1 | ~~What exactly is the €100?~~ **Decided (v0.2):** monthly net loss limit on a larger account. | — |
-| 2 | **Account type at IBKR.** Spreads require a **margin** account at IBKR; cash accounts allow long options only (minimum equity for margin accounts USD 2,000 for US-regulated accounts as far as I know). Please confirm that your account is a margin account with the options permission for spreads. | Without margin permission, only single long options would be possible — I would advise against this strategy in that case. |
+| 2 | ~~Account type at IBKR~~ **Decided (v0.3):** margin account confirmed. Still to check on paper: the options permission covers vertical spreads (one paper order per strategy, ASSUMPTIONS B.1). | — |
 | 3 | **Pattern Day Trader status** of the account (applies to US-regulated margin accounts < USD 25,000; rule changes have been discussed by FINRA — current status to be verified). | Stops on entry day count as day trades. |
 | 4 | **Base currency and FX.** EUR base: buy USD in advance (manual conversion) to avoid an automatic USD margin loan and interest. Confirm the FX rate used to convert the loss limit. | The system's limits are in USD. |
-| 5 | ~~Data budget~~ **Decided (v0.2):** on top of the €100. **Still open:** (a) do you accept the terms-of-service risk of scraping X and Reddit via Apify (section 3.1), or should X come from the official API (~USD 220/month)? (b) Upper limit for running costs per month — proposal USD 70. | Decides the data architecture. |
+| 5 | ~~Data budget~~ **Decided (v0.2/v0.3):** on top of the €100; terms-of-service risk of Apify scraping accepted; running costs capped at USD 50/month (section 8). | — |
 | 6 | **Setup B (bearish fade):** paper only for the first 3 months — agreed? | Highest risk setup. |
-| 7 | **Code changes** to `ibtrader`: monthly loss limit, weekly entry cap, max holding days, earnings blackout as risk-engine rules. Should these be built (I recommend at least the monthly loss limit), or stay producer-side? | Today the producer must enforce them; a risk-engine rule is safer ("single veto" principle). |
+| 7 | ~~Monthly loss limit in the risk engine~~ **Done (v0.3):** `MAX_MONTHLY_LOSS_USD`. **Still open:** weekly entry cap, max holding days and earnings blackout stay producer-side for now — build them into the risk engine before phase 3 (auto)? | A risk-engine rule is safer ("single veto" principle). |
 | 8 | **Personal account dealing.** Does your employer's compliance policy for private securities transactions (pre-clearance, holding periods, restricted list) apply to automated trading? | A 10-day time stop or a stop loss may conflict with a minimum holding period. |
 | 9 | **Tax treatment** (Germany: capital income, reporting of a foreign broker account in the tax return) — not assessed in this draft. | No tax statements are made here. |
 | 10 | **Partial-bar behaviour** of IBKR daily bars at 15:30 ET, as assumed in section 4. | If the current day is not included, the conditions refer to yesterday's bar. |

@@ -716,6 +716,25 @@ def test_daily_loss_limit_stops_new_entries_after_a_losing_close(tmp_path):
     assert h.intent(signal_id="nvda-momo-003")["status"] in ("approved", "submitted")
 
 
+def test_monthly_loss_limit_blocks_later_days_and_resets_next_month(tmp_path):
+    h = make_harness(tmp_path, max_daily_loss_usd=1000.0, max_monthly_loss_usd=300.0)
+    h.submit(trade_signal(SIGNAL))
+    pos = h.fill_entry()
+    close_position(h, spot=150.0)
+    # 300 - 255 lost leaves less than one spread (about 274 at natural) for the rest of October
+    assert h.store.get_position(pos["id"])["realized_pnl"] < -250.0
+
+    h.submit(trade_signal("nvda-momo-002", valid_until="2026-10-21T19:55:00Z"))
+    h.at(utc(2026, 10, 21, 14, 30)).run(1)
+    rejected = h.intent(signal_id="nvda-momo-002")
+    assert (rejected["status"], rejected["rule"]) == ("rejected", "monthly_loss_limit")
+
+    # the counter is per New York calendar month
+    h.submit(trade_signal("nvda-momo-003", valid_until="2026-11-02T20:55:00Z"))
+    h.at(utc(2026, 11, 2, 15, 30)).run(1)
+    assert h.intent(signal_id="nvda-momo-003")["status"] in ("approved", "submitted")
+
+
 def test_daily_loss_limit_does_not_block_exits(tmp_path):
     h = make_harness(tmp_path, max_daily_loss_usd=100.0)
     h.submit(trade_signal(SIGNAL))
