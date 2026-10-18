@@ -1,29 +1,46 @@
-"""US equity-options session calendar (regular hours, America/New_York)."""
+"""US equity-options session calendar (regular hours, America/New_York).
+
+Holidays and early closes come from `pandas_market_calendars` (NYSE calendar). The calendar is
+computed from rules, so it covers any year; it does not query a server at runtime. Keep the
+package updated to pick up corrections (e.g. newly declared market closures).
+"""
 
 from __future__ import annotations
 
+import functools
 from datetime import UTC, date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
-NY = ZoneInfo("America/New_York")
-SESSION_OPEN = time(9, 30)
-SESSION_CLOSE = time(16, 0)
-EARLY_CLOSE = time(13, 0)
+import pandas_market_calendars as mcal
 
-# NYSE full-day closures. VERIFY against the official NYSE calendar before each year.
-HOLIDAYS: frozenset[date] = frozenset(
-    {
-        date(2026, 1, 1), date(2026, 1, 19), date(2026, 2, 16), date(2026, 4, 3),
-        date(2026, 5, 25), date(2026, 6, 19), date(2026, 7, 3), date(2026, 9, 7),
-        date(2026, 11, 26), date(2026, 12, 25),
-        date(2027, 1, 1), date(2027, 1, 18), date(2027, 2, 15), date(2027, 3, 26),
-        date(2027, 5, 31), date(2027, 6, 18), date(2027, 7, 5), date(2027, 9, 6),
-        date(2027, 11, 25), date(2027, 12, 24),
+NY = ZoneInfo("America/New_York")
+SESSION_CLOSE = time(16, 0)
+_CALENDAR = mcal.get_calendar("NYSE")
+
+
+@functools.lru_cache(maxsize=32)
+def _sessions(year: int) -> dict[date, tuple[datetime, datetime]]:
+    """Regular sessions of one year: day -> (open, close) in New York time."""
+    schedule = _CALENDAR.schedule(start_date=f"{year}-01-01", end_date=f"{year}-12-31")
+    return {
+        day.date(): (opened.to_pydatetime().astimezone(NY), closed.to_pydatetime().astimezone(NY))
+        for day, opened, closed in zip(
+            schedule.index, schedule["market_open"], schedule["market_close"], strict=True
+        )
     }
-)  # fmt: skip
-EARLY_CLOSES: frozenset[date] = frozenset(
-    {date(2026, 11, 27), date(2026, 12, 24), date(2027, 11, 26)}
-)
+
+
+def holidays(year: int) -> frozenset[date]:
+    """Weekdays without a regular session (full-day closures)."""
+    sessions = _sessions(year)
+    first = date(year, 1, 1)
+    days = (first + timedelta(days=i) for i in range((date(year + 1, 1, 1) - first).days))
+    return frozenset(d for d in days if d.weekday() < 5 and d not in sessions)
+
+
+def early_closes(year: int) -> frozenset[date]:
+    """Sessions that close before 16:00 New York time."""
+    return frozenset(d for d, (_, close) in _sessions(year).items() if close.time() < SESSION_CLOSE)
 
 
 def utcnow() -> datetime:
@@ -39,14 +56,11 @@ def ny_date(moment: datetime) -> date:
 
 
 def is_trading_day(day: date) -> bool:
-    return day.weekday() < 5 and day not in HOLIDAYS
+    return day in _sessions(day.year)
 
 
 def session_bounds(day: date) -> tuple[datetime, datetime] | None:
-    if not is_trading_day(day):
-        return None
-    close = EARLY_CLOSE if day in EARLY_CLOSES else SESSION_CLOSE
-    return datetime.combine(day, SESSION_OPEN, NY), datetime.combine(day, close, NY)
+    return _sessions(day.year).get(day)
 
 
 def is_market_open(moment: datetime) -> bool:

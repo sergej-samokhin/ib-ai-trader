@@ -62,7 +62,7 @@ JSON logs.
 - Python 3.12+, `from __future__ import annotations`, type hints, ruff (line length 100).
 - Time is always injected: functions take `now: datetime` (UTC, tz-aware). Do not call
   `utcnow()` inside business logic; tests pass fixed clocks. NY session logic lives in
-  `clock.py`.
+  `clock.py` (NYSE calendar via `pandas_market_calendars`; never hard-code holidays).
 - Prices are per share. Multiply by 100 for USD premium. Net debit/credit helpers live in
   `domain.py`.
 - Store rows are `sqlite3.Row`. Intent and position fields are defined in `store.SCHEMA`.

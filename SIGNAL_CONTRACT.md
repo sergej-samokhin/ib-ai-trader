@@ -88,8 +88,8 @@ Behaviour details that affect how you write signals:
   09:30 to 16:00, 13:00 on early-close days), excluding the first `NO_ENTRY_OPEN_MINUTES` and the
   last `NO_ENTRY_CLOSE_MINUTES` (operator settings, both 15 in `.env.example`; the end of the
   window is exclusive). With the example values the window is 09:45 to 15:45 (12:45 on early-close
-  days), so the latest effective `check_at` is `15:44`. Weekends and the NYSE holidays in the
-  built-in table are closed.
+  days), so the latest effective `check_at` is `15:44`. Weekends and NYSE holidays
+  (NYSE calendar from `pandas_market_calendars`) are closed.
 - **`trade` outside the window.** The signal stays `pending` until the window opens. If
   `valid_until` passes first, it expires (feedback event `expired`). Set `valid_until` so that it
   extends into the entry window you are aiming for.

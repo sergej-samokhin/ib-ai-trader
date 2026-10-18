@@ -362,6 +362,10 @@ current IBKR and IBC documentation). IBC automates the login and the daily resta
 `AUTO_RESTART_TIME` to `11:59 PM`, `TIME_ZONE` to America/New_York and `TWOFA_TIMEOUT_ACTION` to `restart`. Someone must be
 named to complete the second factor (spec open question 5, see [ASSUMPTIONS.md](ASSUMPTIONS.md)).
 
+**IBC is retired** (archived 2026-09-01, only critical fixes). It still works inside the gateway image, but
+has no maintained upstream; options and the fork under evaluation are listed in
+[RELATED_PROJECTS.md](RELATED_PROJECTS.md#ibcalphaibc-retired). Alert on disconnects so a broken auto-login is noticed.
+
 When the gateway is down or not yet authenticated:
 
 - Each loop iteration tries to reconnect (5 attempts with 2, 4, 8 and 16 second waits), then raises and sends the
@@ -393,7 +397,7 @@ After the close:
 
 Weekly: back up the database (`sqlite3 var/ibtrader.sqlite3 ".backup var/backup-$(date +%F).sqlite3"`), tidy
 `var/outbox`, `var/processed` and `var/quarantine` (no automatic cleanup), review the scorecard, check the weekly gateway login.
-Before the end of 2027: extend the holiday table in `src/ibtrader/clock.py` (it covers 2026 and 2027 only, and should be checked against the official NYSE calendar).
+Keep `pandas_market_calendars` up to date (`pip install -U pandas_market_calendars`) so newly announced market closures are known; it computes the NYSE calendar locally and does not fetch updates at runtime.
 
 ## 12. Promoting a producer
 

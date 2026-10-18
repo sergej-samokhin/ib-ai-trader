@@ -8,8 +8,6 @@ import pytest
 
 from ibtrader import clock
 from ibtrader.clock import (
-    EARLY_CLOSES,
-    HOLIDAYS,
     NY,
     dte,
     in_entry_window,
@@ -20,6 +18,31 @@ from ibtrader.clock import (
     session_bounds,
     to_ny,
 )
+
+HOLIDAYS = clock.holidays(2026) | clock.holidays(2027)
+EARLY_CLOSES = clock.early_closes(2026) | clock.early_closes(2027)
+
+# Published NYSE calendar 2026-2027 (pinned so a package update that changes them is noticed).
+EXPECTED_HOLIDAYS = {
+    date(2026, 1, 1), date(2026, 1, 19), date(2026, 2, 16), date(2026, 4, 3),
+    date(2026, 5, 25), date(2026, 6, 19), date(2026, 7, 3), date(2026, 9, 7),
+    date(2026, 11, 26), date(2026, 12, 25),
+    date(2027, 1, 1), date(2027, 1, 18), date(2027, 2, 15), date(2027, 3, 26),
+    date(2027, 5, 31), date(2027, 6, 18), date(2027, 7, 5), date(2027, 9, 6),
+    date(2027, 11, 25), date(2027, 12, 24),
+}  # fmt: skip
+EXPECTED_EARLY_CLOSES = {date(2026, 11, 27), date(2026, 12, 24), date(2027, 11, 26)}
+
+
+def test_calendar_matches_published_nyse_dates():
+    assert HOLIDAYS == EXPECTED_HOLIDAYS
+    assert EARLY_CLOSES == EXPECTED_EARLY_CLOSES
+
+
+def test_calendar_covers_later_years():
+    assert not is_trading_day(date(2030, 12, 25))  # Christmas, Wednesday
+    assert not is_trading_day(date(2031, 1, 1))
+    assert is_trading_day(date(2030, 12, 23))
 
 
 def utc(year, month, day, hour, minute=0) -> datetime:

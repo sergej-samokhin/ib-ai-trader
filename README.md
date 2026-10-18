@@ -74,7 +74,8 @@ Outside US regular trading hours, `trade` signals stay `pending` until the entry
    are read via `reqMktData` with generic ticks 100, 101 and 106.
 3. **IB Gateway** (recommended over TWS for headless servers) with **IBC** for automated login
    and daily restarts. `docker-compose.yml` uses a community image that bundles both. Review it
-   and pin a digest before use.
+   and pin a digest before use. **IBC was retired and archived on 2026-09-01.** It still works
+   but has no maintained upstream; see [docs/RELATED_PROJECTS.md](docs/RELATED_PROJECTS.md).
 4. **API settings** in Gateway/TWS: enable ActiveX/Socket clients, disable *Read-Only API*, set
    the socket port (Gateway: 4002 paper / 4001 live; TWS: 7497 / 7496), and restrict trusted IPs
    to the trader host.
@@ -190,4 +191,5 @@ validates the example signals.
 - [docs/adr/0001-signal-ingestion.md](docs/adr/0001-signal-ingestion.md): transport decision
 - [docs/RUNBOOK.md](docs/RUNBOOK.md): operations
 - [docs/ASSUMPTIONS.md](docs/ASSUMPTIONS.md): v0.1 decisions, assumptions to verify, limitations
+- [docs/RELATED_PROJECTS.md](docs/RELATED_PROJECTS.md): related open-source projects
 - [CHANGELOG.md](CHANGELOG.md)

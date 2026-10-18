@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Session calendar now uses `pandas_market_calendars` (NYSE) instead of a hand-written
+  2026-2027 holiday table; the 2026-2027 dates are pinned in the tests.
+- `docs/RELATED_PROJECTS.md`: survey of related open-source repositories.
+
 ## 0.1.0 – 2026-10-18
 
 First version built from the build spec (draft v0.2).

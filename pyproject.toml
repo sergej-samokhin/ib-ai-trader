@@ -12,6 +12,7 @@ dependencies = [
     "pydantic>=2.7,<3",
     "PyYAML>=6.0",
     "ib_async>=1.0",
+    "pandas_market_calendars>=5.0",
 ]
 
 [project.optional-dependencies]

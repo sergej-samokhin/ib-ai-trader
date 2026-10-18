@@ -16,7 +16,7 @@ from helpers_trading import (
     selection,
 )
 from ibtrader import risk
-from ibtrader.clock import HOLIDAYS, NY
+from ibtrader.clock import NY, holidays
 from ibtrader.killswitch import KillSwitch
 from ibtrader.risk import RiskEngine
 
@@ -108,13 +108,13 @@ def test_market_hours_rejects_weekend(engine):
 
 def test_market_hours_rejects_a_holiday(engine):
     thanksgiving = date(2026, 11, 26)
-    assert thanksgiving in HOLIDAYS
+    assert thanksgiving in holidays(2026)
     moment = datetime.combine(thanksgiving, time(10, 30), NY)
     decision = engine.check_entry(entry_request(now=moment), portfolio())
     assert (decision.approved, decision.rule) == (False, risk.MARKET_HOURS)
 
 
-@pytest.mark.parametrize("holiday", sorted(HOLIDAYS))
+@pytest.mark.parametrize("holiday", sorted(holidays(2026) | holidays(2027)))
 def test_every_listed_holiday_blocks_entries(engine, holiday):
     moment = datetime.combine(holiday, time(11, 0), NY)
     assert engine.check_entry(entry_request(now=moment), portfolio()).rule == risk.MARKET_HOURS
