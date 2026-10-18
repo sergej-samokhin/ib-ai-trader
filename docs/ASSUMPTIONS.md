@@ -143,6 +143,23 @@ Verified against the code. Items marked **(spec)** deviate from, or only partly 
 - "Verbatim" storage of payloads is UTF-8 decoded with replacement characters; payloads over `MAX_SIGNAL_BYTES` are stored truncated.
 - The audit log is append-only through database triggers; someone with write access to the database file can still drop the triggers.
 
+### Dashboard and WSB radar
+
+- The dashboard has **no authentication**; it binds to loopback only and checks the `Host` and
+  `Origin` headers. Anyone with a shell on the host can read it.
+- The radar sees a **bounded sample**, not the whole subreddit: Arctic Shift is a free,
+  experimental archive (delays, gaps at page boundaries, no reliable vote counts); public RSS
+  returns at most 100 entries per feed and no authors. Reddit OAuth needs approved API access.
+  The terms-of-service risk was accepted by the owner (strategy draft section 3.1).
+- The ticker whitelist is the Nasdaq symbol directory; whether a ticker has listed options is
+  checked only later by the selector. `bot_score` (account age, near-identical text) and X data
+  (strategy stage 2) are not implemented.
+- Sentiment is lexical and English only; irony, images and context are largely missed.
+- The daily feature row is the last snapshot taken at or before 15:00 New York (or the latest of
+  the day if none); a missed day lowers `history_days` instead of counting as zero mentions.
+- The paid Apify Reddit adapter and the Codex research button of the WSBRadar prototype were not
+  ported (outside the USD 50 cost cap; Windows-specific).
+
 ### Testing and quality
 
 - `src/ibtrader/ibkr.py` has **no automated tests** and has not been validated against a paper account;

@@ -187,6 +187,12 @@ non-redistributed research use the practical risk is mainly account blocking or 
 to work, but this is **not a legal assessment**. **Owner decision (2026-10-18): risk accepted;
 X and Reddit data via Apify/Reddit API as described.**
 
+**Implementation status (phase 0).** Stage 1 for Reddit is implemented as the WSB radar
+(`src/ibtrader/radar/`, `ibtrader radar`, dashboard tab), see README "Dashboard and WSB radar".
+It computes `mentions_24h`, `unique_authors_24h`, `breadth`, `sentiment` (lexical baseline),
+`rank_wsb`, `attention_z` and `attention_accel` and logs them daily; it emits no signals. Not yet
+implemented: the aggregator cross-check, `bot_score`, author weighting and stage 2 (X).
+
 ### 3.2 Ticker extraction
 
 - Accept a ticker only if written as cashtag (`$GME`) **or** an exact match against a whitelist of

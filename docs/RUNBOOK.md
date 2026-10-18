@@ -529,6 +529,27 @@ market-data error) stops the evaluation of the remaining rules in that tick and 
 
 `sqlite3 var/ibtrader.sqlite3 "PRAGMA integrity_check"`. Restore from the last backup (section 11) with the trader stopped, then run `ibtrader reconcile`.
 
+## 14a. Dashboard and WSB radar
+
+Start: `ibtrader dashboard` (default `127.0.0.1:8765`; `--port`, `--no-scheduler`). It reads the
+trading database read-only and can run next to `ibtrader run`. From another machine:
+`ssh -L 8765:127.0.0.1:8765 <host>` and open `http://127.0.0.1:8765/`. Binding a non-loopback
+address is refused because the dashboard has no login.
+
+Radar checks:
+
+- `ibtrader radar status`: provider, state (`ok`, `partial`, `error`, `waiting`), last success,
+  coverage warnings and the top tickers.
+- State `error` with "rate limit": wait for the next interval. Do not loop manual scans; the
+  "Scan now" button refuses a second scan within 30 s.
+- `stale: true` means no successful scan for two intervals. Strategy kill criterion: a social
+  feed missing for more than one trading day means no signals (fail closed).
+- `partial` is normal for Arctic Shift (bounded pages, archive delay). The coverage block lists
+  what may be missing.
+- `attention_z` stays empty until 7 tracked days exist; the strategy's data-quality filter wants
+  30 (`history_days`). Phase 0 runs four weeks for this reason.
+- Switching `RADAR_PROVIDER` starts a separate history; providers are not mixed.
+
 ## 15. Where data lives
 
 Everything is under `DATA_DIR` (default `var/`, git-ignored) unless stated.
@@ -542,6 +563,9 @@ Everything is under `DATA_DIR` (default `var/`, git-ignored) unless stated.
 | `var/quarantine/<producer>/` | rejected and expired documents |
 | `var/logs/ibtrader.jsonl` | structured log (the same lines go to stderr) |
 | `var/KILL` | kill switch flag, present means active |
+| `var/radar/radar.sqlite3` | WSB radar: raw posts/comments (`RADAR_RETENTION_DAYS`), scan runs, daily attention features (400 days) |
+| `var/radar/catalog.json` | cached Nasdaq symbol directory (ticker whitelist) |
+| `var/logs/dashboard.jsonl` | dashboard and radar log |
 | `.env`, `config/producers.yaml` | configuration. Never commit; the registry contains key hashes. |
 
 ## 16. SQL queries for the audit log
