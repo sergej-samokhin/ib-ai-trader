@@ -20,6 +20,7 @@ STRATEGY_NOT_ALLOWED = "strategy_not_allowed"
 ORDER_TYPE = "order_type"
 MARKET_HOURS = "market_hours"
 DAILY_LOSS = "daily_loss_limit"
+MONTHLY_LOSS = "monthly_loss_limit"
 MAX_OPEN_POSITIONS = "max_open_positions"
 LIQUIDITY_OI = "liquidity_open_interest"
 LIQUIDITY_SPREAD = "liquidity_spread"
@@ -37,6 +38,7 @@ class PortfolioSnapshot:
     by_producer: dict[str, float] = field(default_factory=dict)
     by_underlying: dict[str, float] = field(default_factory=dict)
     realized_pnl_today: float = 0.0
+    realized_pnl_month: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -92,6 +94,12 @@ class RiskEngine:
                 DAILY_LOSS,
                 f"realised P&L today {pf.realized_pnl_today:.2f} <= -{lim.max_daily_loss_usd:.2f}",
             )
+        if pf.realized_pnl_month <= -lim.max_monthly_loss_usd:
+            return RiskDecision.reject(
+                MONTHLY_LOSS,
+                f"realised P&L this month {pf.realized_pnl_month:.2f} "
+                f"<= -{lim.max_monthly_loss_usd:.2f}",
+            )
         if pf.open_positions >= lim.max_open_positions:
             return RiskDecision.reject(
                 MAX_OPEN_POSITIONS,
@@ -120,6 +128,8 @@ class RiskEngine:
             MAX_PORTFOLIO: lim.max_portfolio_risk_usd - pf.premium_at_risk,
             PRODUCER_BUDGET: req.producer.budget_usd - pf.by_producer.get(req.producer.id, 0.0),
             UNDERLYING: lim.max_underlying_exposure_usd - pf.by_underlying.get(req.underlying, 0.0),
+            # the month's net loss stays within the limit even if every open position loses all
+            MONTHLY_LOSS: lim.max_monthly_loss_usd + pf.realized_pnl_month - pf.premium_at_risk,
         }
         binding_rule = min(rooms, key=rooms.__getitem__)
         allowed_usd = rooms[binding_rule]

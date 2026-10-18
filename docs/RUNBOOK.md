@@ -449,7 +449,7 @@ Go through every item. Do not switch before the paper integration checklist in t
 [ASSUMPTIONS.md](ASSUMPTIONS.md#b-assumptions-to-verify-during-integration) are done.
 
 1. Set the global limits deliberately in `.env` (`MAX_POSITION_USD`, `MAX_PORTFOLIO_RISK_USD`, `MAX_OPEN_POSITIONS`,
-   `MAX_DAILY_LOSS_USD`, `MAX_UNDERLYING_EXPOSURE_USD`, `MIN_OPEN_INTEREST`, `MAX_BID_ASK_SPREAD_PCT`,
+   `MAX_DAILY_LOSS_USD`, `MAX_MONTHLY_LOSS_USD`, `MAX_UNDERLYING_EXPOSURE_USD`, `MIN_OPEN_INTEREST`, `MAX_BID_ASK_SPREAD_PCT`,
    `NO_ENTRY_OPEN_MINUTES`, `NO_ENTRY_CLOSE_MINUTES`, `MANUAL_APPROVAL_ABOVE_USD`, `MIN_CONFIDENCE_AUTO`) and each producer's `budget_usd`. The placeholders are not recommendations.
 2. Keep every producer at `paper_only` (simulated in live mode) or `manual`. Promote only per section 12.
 3. Gateway: log in to the **live** account (compose: `TRADING_MODE=live`).

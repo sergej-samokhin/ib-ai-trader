@@ -126,13 +126,16 @@ class Trader:
             by_underlying[intent["underlying"]] = (
                 by_underlying.get(intent["underlying"], 0.0) + risk
             )
-        midnight = datetime.combine(ny_date(now), time(0), NY)
+        today = ny_date(now)
+        midnight = datetime.combine(today, time(0), NY)
+        month_start = datetime.combine(today.replace(day=1), time(0), NY)
         return PortfolioSnapshot(
             open_positions=count,
             premium_at_risk=total,
             by_producer=by_producer,
             by_underlying=by_underlying,
             realized_pnl_today=self.store.realized_pnl_since(midnight, shadow=shadow),
+            realized_pnl_month=self.store.realized_pnl_since(month_start, shadow=shadow),
         )
 
     # ============================================================================ steps

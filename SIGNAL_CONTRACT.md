@@ -581,19 +581,23 @@ with the rule id shown (the id appears in the `rejected` feedback event and in t
 | `order_type` | Limit orders only | fixed in code |
 | `market_hours` | Inside the entry window | `NO_ENTRY_OPEN_MINUTES`, `NO_ENTRY_CLOSE_MINUTES` |
 | `daily_loss_limit` | Realised P&L of the day (New York date) greater than minus the limit | `MAX_DAILY_LOSS_USD` |
+| `monthly_loss_limit` | Realised P&L of the calendar month (New York date) greater than minus the limit; also a sizing limit, see below | `MAX_MONTHLY_LOSS_USD` |
 | `max_open_positions` | Open positions plus open entry intents below the maximum | `MAX_OPEN_POSITIONS` |
 | `liquidity_open_interest` | Open interest of each leg at least the minimum; missing data rejects | `MIN_OPEN_INTEREST` |
 | `liquidity_spread` | Bid-ask spread of each leg, in percent of its mid, at most the maximum; missing data rejects | `MAX_BID_ASK_SPREAD_PCT` |
-| `max_position_premium`, `max_portfolio_risk`, `producer_budget`, `underlying_concentration` | Sizing, see below | `MAX_POSITION_USD`, `MAX_PORTFOLIO_RISK_USD`, `budget_usd` in the registry, `MAX_UNDERLYING_EXPOSURE_USD` |
+| `max_position_premium`, `max_portfolio_risk`, `producer_budget`, `underlying_concentration`, `monthly_loss_limit` | Sizing, see below | `MAX_POSITION_USD`, `MAX_PORTFOLIO_RISK_USD`, `budget_usd` in the registry, `MAX_UNDERLYING_EXPOSURE_USD`, `MAX_MONTHLY_LOSS_USD` |
 
 **Sizing.** The cost of one contract (or spread) is computed at the worst case, the **natural price**
 (pay the ask of long legs, receive the bid of short legs), times 100. The available premium is the
-smallest of four amounts:
+smallest of five amounts:
 
 1. `min(sizing.max_premium_usd, MAX_POSITION_USD)`
 2. `MAX_PORTFOLIO_RISK_USD` minus the premium already at risk (open positions and open entry intents)
 3. your producer's `budget_usd` minus your premium at risk
 4. `MAX_UNDERLYING_EXPOSURE_USD` minus the premium at risk on that underlying (all producers)
+5. `MAX_MONTHLY_LOSS_USD` plus the realised P&L of the calendar month minus the premium at risk
+   (all producers), so the month's net loss stays within the limit even if every open position
+   loses its whole premium
 
 `quantity = min(sizing.max_contracts, floor(available / cost of one contract))`. If this is less than
 1, the entry is rejected with the rule id of the smallest amount (`max_position_premium` also covers
