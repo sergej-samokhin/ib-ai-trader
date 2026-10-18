@@ -97,6 +97,10 @@ def make_handler(
                 return
             parsed = urlsplit(self.path)
             query = parse_qs(parsed.query)
+            if parsed.path == "/favicon.ico":
+                self.send_response(204)
+                self.end_headers()
+                return
             if parsed.path in STATIC:
                 name, kind = STATIC[parsed.path]
                 self._send(200, _static(name), kind)
