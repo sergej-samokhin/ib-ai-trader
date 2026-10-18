@@ -1,0 +1,22 @@
+# Producer registry. Copy to config/producers.yaml (git-ignored) and adapt.
+#
+# status:
+#   paper_only  new/unproven producer. MODE=paper: trades on the paper account.
+#               MODE=live: executed as SHADOW (simulated) only, never sent to IBKR.
+#   manual      every entry needs `ibtrader approve <intent_id>`
+#   auto        entries execute automatically within all global limits
+#   paused      every new signal is rejected
+#
+# api_key_sha256: only needed for the HTTP transport. Create with `ibtrader new-key`;
+# give the producer the key, store only the hash here.
+producers:
+  momentum-agent:
+    status: paper_only
+    budget_usd: 600
+    rate_limit_per_hour: 30
+    description: "Daily momentum screener"
+    # api_key_sha256: "<64 hex chars>"
+  macro-agent:
+    status: manual
+    budget_usd: 400
+    rate_limit_per_hour: 10

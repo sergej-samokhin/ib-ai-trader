@@ -1,0 +1,30 @@
+# IB Gateway (with IBC for automated login/restarts) + ibtrader.
+# The gateway image is a community image - review it before use and pin a digest.
+services:
+  ib-gateway:
+    image: ghcr.io/gnzsnz/ib-gateway:stable
+    restart: unless-stopped
+    environment:
+      TWS_USERID: ${TWS_USERID}
+      TWS_PASSWORD: ${TWS_PASSWORD}
+      TRADING_MODE: ${TRADING_MODE:-paper}
+      READ_ONLY_API: "no"
+      TWOFA_TIMEOUT_ACTION: restart
+      AUTO_RESTART_TIME: "11:59 PM"
+      TIME_ZONE: America/New_York
+    # API ports are reachable only inside the compose network.
+    expose:
+      - "4003"  # live API (socat relay inside the image)
+      - "4004"  # paper API
+
+  ibtrader:
+    build: .
+    restart: unless-stopped
+    depends_on: [ib-gateway]
+    env_file: .env
+    environment:
+      IB_HOST: ib-gateway
+      IB_PORT: ${IB_PORT:-4004}
+    volumes:
+      - ./var:/app/var
+      - ./config:/app/config:ro

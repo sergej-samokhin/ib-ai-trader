@@ -1,0 +1,468 @@
+{
+  "$defs": {
+    "ContractSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "dte_max": {
+          "maximum": 365,
+          "minimum": 0,
+          "title": "Dte Max",
+          "type": "integer"
+        },
+        "dte_min": {
+          "maximum": 365,
+          "minimum": 0,
+          "title": "Dte Min",
+          "type": "integer"
+        },
+        "long_leg_delta": {
+          "maximum": 0.95,
+          "minimum": 0.05,
+          "title": "Long Leg Delta",
+          "type": "number"
+        },
+        "short_leg_delta": {
+          "anyOf": [
+            {
+              "maximum": 0.95,
+              "minimum": 0.01,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Short Leg Delta"
+        }
+      },
+      "required": [
+        "dte_min",
+        "dte_max",
+        "long_leg_delta"
+      ],
+      "title": "ContractSpec",
+      "type": "object"
+    },
+    "ExitRules": {
+      "additionalProperties": false,
+      "properties": {
+        "close_before_expiry_days": {
+          "maximum": 60,
+          "minimum": 0,
+          "title": "Close Before Expiry Days",
+          "type": "integer"
+        },
+        "stop_loss_pct": {
+          "exclusiveMinimum": 0,
+          "maximum": 100,
+          "title": "Stop Loss Pct",
+          "type": "number"
+        },
+        "take_profit_pct": {
+          "exclusiveMinimum": 0,
+          "maximum": 1000,
+          "title": "Take Profit Pct",
+          "type": "number"
+        }
+      },
+      "required": [
+        "take_profit_pct",
+        "stop_loss_pct",
+        "close_before_expiry_days"
+      ],
+      "title": "ExitRules",
+      "type": "object"
+    },
+    "ExitSignal": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "enum": [
+            "close",
+            "reduce"
+          ],
+          "title": "Action",
+          "type": "string"
+        },
+        "confidence": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "contract_version": {
+          "const": "1.0",
+          "title": "Contract Version",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "kind": {
+          "const": "exit",
+          "title": "Kind",
+          "type": "string"
+        },
+        "producer": {
+          "pattern": "^[a-z0-9][a-z0-9_-]{1,63}$",
+          "title": "Producer",
+          "type": "string"
+        },
+        "reduce_pct": {
+          "default": 100,
+          "maximum": 100,
+          "minimum": 1,
+          "title": "Reduce Pct",
+          "type": "integer"
+        },
+        "signal_id": {
+          "pattern": "^[a-z0-9][a-z0-9._-]{2,127}$",
+          "title": "Signal Id",
+          "type": "string"
+        },
+        "target_signal_id": {
+          "pattern": "^[a-z0-9][a-z0-9._-]{2,127}$",
+          "title": "Target Signal Id",
+          "type": "string"
+        },
+        "valid_until": {
+          "format": "date-time",
+          "title": "Valid Until",
+          "type": "string"
+        },
+        "version": {
+          "maximum": 1000000,
+          "minimum": 1,
+          "title": "Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "contract_version",
+        "signal_id",
+        "version",
+        "producer",
+        "created_at",
+        "valid_until",
+        "confidence",
+        "kind",
+        "target_signal_id",
+        "action"
+      ],
+      "title": "ExitSignal",
+      "type": "object"
+    },
+    "OrderSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "max_reprice_steps": {
+          "maximum": 10,
+          "minimum": 0,
+          "title": "Max Reprice Steps",
+          "type": "integer"
+        },
+        "price": {
+          "const": "mid",
+          "title": "Price",
+          "type": "string"
+        },
+        "type": {
+          "const": "limit",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "price",
+        "max_reprice_steps"
+      ],
+      "title": "OrderSpec",
+      "type": "object"
+    },
+    "RuleSignal": {
+      "additionalProperties": false,
+      "properties": {
+        "confidence": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "contract": {
+          "$ref": "#/$defs/ContractSpec"
+        },
+        "contract_version": {
+          "const": "1.0",
+          "title": "Contract Version",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "exit": {
+          "$ref": "#/$defs/ExitRules"
+        },
+        "kind": {
+          "const": "rule",
+          "title": "Kind",
+          "type": "string"
+        },
+        "max_entries_per_day": {
+          "maximum": 10,
+          "minimum": 1,
+          "title": "Max Entries Per Day",
+          "type": "integer"
+        },
+        "order": {
+          "$ref": "#/$defs/OrderSpec"
+        },
+        "producer": {
+          "pattern": "^[a-z0-9][a-z0-9_-]{1,63}$",
+          "title": "Producer",
+          "type": "string"
+        },
+        "signal_id": {
+          "pattern": "^[a-z0-9][a-z0-9._-]{2,127}$",
+          "title": "Signal Id",
+          "type": "string"
+        },
+        "sizing": {
+          "$ref": "#/$defs/SizingSpec"
+        },
+        "strategy": {
+          "$ref": "#/$defs/Strategy"
+        },
+        "trigger": {
+          "$ref": "#/$defs/Trigger"
+        },
+        "underlying": {
+          "pattern": "^[A-Z]{1,5}(\\.[A-Z])?$",
+          "title": "Underlying",
+          "type": "string"
+        },
+        "valid_until": {
+          "format": "date-time",
+          "title": "Valid Until",
+          "type": "string"
+        },
+        "version": {
+          "maximum": 1000000,
+          "minimum": 1,
+          "title": "Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "contract_version",
+        "signal_id",
+        "version",
+        "producer",
+        "created_at",
+        "valid_until",
+        "confidence",
+        "underlying",
+        "strategy",
+        "contract",
+        "order",
+        "sizing",
+        "exit",
+        "kind",
+        "trigger",
+        "max_entries_per_day"
+      ],
+      "title": "RuleSignal",
+      "type": "object"
+    },
+    "SizingSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "max_contracts": {
+          "maximum": 100,
+          "minimum": 1,
+          "title": "Max Contracts",
+          "type": "integer"
+        },
+        "max_premium_usd": {
+          "exclusiveMinimum": 0,
+          "maximum": 100000,
+          "title": "Max Premium Usd",
+          "type": "number"
+        }
+      },
+      "required": [
+        "max_premium_usd",
+        "max_contracts"
+      ],
+      "title": "SizingSpec",
+      "type": "object"
+    },
+    "Strategy": {
+      "enum": [
+        "long_call",
+        "long_put",
+        "bull_call_spread",
+        "bear_put_spread"
+      ],
+      "title": "Strategy",
+      "type": "string"
+    },
+    "TradeSignal": {
+      "additionalProperties": false,
+      "properties": {
+        "confidence": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "contract": {
+          "$ref": "#/$defs/ContractSpec"
+        },
+        "contract_version": {
+          "const": "1.0",
+          "title": "Contract Version",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "exit": {
+          "$ref": "#/$defs/ExitRules"
+        },
+        "kind": {
+          "const": "trade",
+          "title": "Kind",
+          "type": "string"
+        },
+        "order": {
+          "$ref": "#/$defs/OrderSpec"
+        },
+        "producer": {
+          "pattern": "^[a-z0-9][a-z0-9_-]{1,63}$",
+          "title": "Producer",
+          "type": "string"
+        },
+        "signal_id": {
+          "pattern": "^[a-z0-9][a-z0-9._-]{2,127}$",
+          "title": "Signal Id",
+          "type": "string"
+        },
+        "sizing": {
+          "$ref": "#/$defs/SizingSpec"
+        },
+        "strategy": {
+          "$ref": "#/$defs/Strategy"
+        },
+        "underlying": {
+          "pattern": "^[A-Z]{1,5}(\\.[A-Z])?$",
+          "title": "Underlying",
+          "type": "string"
+        },
+        "valid_until": {
+          "format": "date-time",
+          "title": "Valid Until",
+          "type": "string"
+        },
+        "version": {
+          "maximum": 1000000,
+          "minimum": 1,
+          "title": "Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "contract_version",
+        "signal_id",
+        "version",
+        "producer",
+        "created_at",
+        "valid_until",
+        "confidence",
+        "underlying",
+        "strategy",
+        "contract",
+        "order",
+        "sizing",
+        "exit",
+        "kind"
+      ],
+      "title": "TradeSignal",
+      "type": "object"
+    },
+    "Trigger": {
+      "additionalProperties": false,
+      "properties": {
+        "check_at": {
+          "anyOf": [
+            {
+              "pattern": "^([01]\\d|2[0-3]):[0-5]\\d America/New_York$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Check At"
+        },
+        "condition": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Condition"
+        },
+        "type": {
+          "enum": [
+            "condition",
+            "schedule"
+          ],
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "title": "Trigger",
+      "type": "object"
+    }
+  },
+  "$id": "https://ibtrader.local/schemas/signal-contract-1.0.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Front matter of a signal document (YAML converted to JSON). Semantic rules that JSON Schema cannot express (e.g. short_leg_delta < long_leg_delta, the condition grammar, valid_until > created_at) are enforced by the gateway; see SIGNAL_CONTRACT.md.",
+  "discriminator": {
+    "mapping": {
+      "exit": "#/$defs/ExitSignal",
+      "rule": "#/$defs/RuleSignal",
+      "trade": "#/$defs/TradeSignal"
+    },
+    "propertyName": "kind"
+  },
+  "oneOf": [
+    {
+      "$ref": "#/$defs/TradeSignal"
+    },
+    {
+      "$ref": "#/$defs/RuleSignal"
+    },
+    {
+      "$ref": "#/$defs/ExitSignal"
+    }
+  ],
+  "title": "IBKR Options Signal Contract v1.0"
+}

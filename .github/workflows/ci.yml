@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: pip install -e ".[dev]"
+      - run: ruff check .
+      - run: ruff format --check .
+      - run: pytest
+      - name: JSON Schema is up to date
+        run: |
+          ibtrader schema --out /tmp/schema.json
+          diff -u schemas/signal-contract-1.0.schema.json /tmp/schema.json
+      - name: Example signals
+        run: |
+          ibtrader validate examples/signals/valid/*.md examples/signals/adversarial/*.md
+          for f in examples/signals/invalid/*.md; do
+            if ibtrader validate "$f" > /dev/null; then echo "unexpectedly valid: $f"; exit 1; fi
+          done

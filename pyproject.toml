@@ -1,0 +1,48 @@
+[build-system]
+requires = ["hatchling>=1.24"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ibtrader"
+version = "0.1.0"
+description = "Executes Markdown trading signals from upstream AI agents as US stock option orders on Interactive Brokers, behind hard risk guardrails."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "pydantic>=2.7,<3",
+    "PyYAML>=6.0",
+    "ib_async>=1.0",
+    "pandas_market_calendars>=5.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "ruff>=0.5",
+    "jsonschema>=4.21",
+]
+
+[project.scripts]
+ibtrader = "ibtrader.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ibtrader"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "S", "SIM"]
+ignore = [
+    "S101",  # assert in tests
+    "S311",  # random is fine for simulation
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S105", "S106", "S108"]
