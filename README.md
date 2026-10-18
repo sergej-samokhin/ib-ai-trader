@@ -51,16 +51,16 @@ cp config/producers.example.yaml config/producers.yaml
 
 pytest                                        # test suite
 ibtrader validate examples/signals/valid/*.md # contract self-test
-ibtrader run --demo                           # synthetic market data + simulated broker
+ibtrader run --demo                           # synthetic data + simulated broker, state in var/demo/
 ```
 
 In a second shell, drop a signal into a producer's inbox. Edit `created_at` / `valid_until` so
 the window includes the current US session; otherwise the signal is acknowledged as `expired`.
 
 ```bash
-cp examples/signals/valid/trade-bull-call-spread.md var/inbox/momentum-agent/
-cat var/outbox/momentum-agent/*.jsonl       # ack + lifecycle feedback
-ibtrader status                             # positions, intents, active signals
+cp examples/signals/valid/trade-bull-call-spread.md var/demo/inbox/momentum-agent/
+cat var/demo/outbox/momentum-agent/*.jsonl  # ack + lifecycle feedback
+DATA_DIR=var/demo ibtrader status          # positions, intents, active signals
 ```
 
 Outside US regular trading hours, `trade` signals stay `pending` until the entry window opens.

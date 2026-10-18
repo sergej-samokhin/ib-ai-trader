@@ -10,6 +10,7 @@ import pytest
 
 from helpers_trading import (
     NOW,
+    FailingBroker,
     Harness,
     default_producers,
     exit_signal,
@@ -1018,3 +1019,35 @@ def test_every_step_decision_leaves_an_audit_trail(h):
         "exit_created",
         "position_closed",
     } <= events
+
+
+# ==================================================================== exit safety
+def test_unknown_exit_blocks_a_second_exit_until_reconciled(h):
+    h.submit(trade_signal())
+    pos = h.fill_entry()
+    h.broker.fill_mode = "never"
+    h.md.set_spot("NVDA", 195.0)  # take profit due
+    h.run(1)
+    (exit_intent,) = h.intents(kind="exit")
+    h.store.update_intent(exit_intent["id"], h.now, status="unknown")  # e.g. after a restart
+    h.run(5)
+    assert len(h.intents(kind="exit")) == 1
+    assert h.store.get_position(pos["id"])["status"] == "open"
+
+
+def test_failed_exit_is_retried_only_after_backoff(h):
+    from ibtrader.app import EXIT_RETRY_BACKOFF_SECONDS
+
+    h.submit(trade_signal())
+    h.fill_entry()
+    working = h.trader.orders.brokers[False]
+    h.trader.orders.brokers[False] = FailingBroker(h.md)
+    h.md.set_spot("NVDA", 195.0)
+    h.run(4)  # 100 s: one failed exit, no retry storm
+    assert [i["status"] for i in h.intents(kind="exit")] == ["error"]
+
+    h.trader.orders.brokers[False] = working
+    h.at(h.now + timedelta(seconds=EXIT_RETRY_BACKOFF_SECONDS))
+    close_position(h)
+    statuses = [i["status"] for i in h.intents(kind="exit")]
+    assert statuses == ["error", "filled"]

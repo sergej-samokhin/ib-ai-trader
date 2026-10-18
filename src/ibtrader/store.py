@@ -368,11 +368,22 @@ class Store:
         )
 
     def open_intents_for_position(self, position_id: str):
-        marks = ",".join("?" * len(OPEN_INTENT_STATUSES))
+        """Open exit intents, plus `unknown` ones: an exit whose fate is unclear after a restart
+        blocks further exits until reconciled, so we never sell the same position twice."""
+        statuses = (*OPEN_INTENT_STATUSES, "unknown")
+        marks = ",".join("?" * len(statuses))
         return self.query(
             f"SELECT * FROM intents WHERE position_id = ? AND status IN ({marks})",  # noqa: S608
-            (position_id, *OPEN_INTENT_STATUSES),
+            (position_id, *statuses),
         )
+
+    def last_failed_exit_at(self, position_id: str) -> datetime | None:
+        row = self.one(
+            "SELECT MAX(updated_at) AS at FROM intents WHERE position_id = ? AND kind = 'exit'"
+            " AND status IN ('rejected', 'error', 'cancelled') AND filled_qty = 0",
+            (position_id,),
+        )
+        return parse_iso(row["at"]) if row and row["at"] else None
 
     # -- positions ----------------------------------------------------------------
     def insert_position(self, now: datetime, **fields: Any) -> str:

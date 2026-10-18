@@ -212,6 +212,8 @@ def cmd_reconcile(args) -> int:
 
 def cmd_run(args) -> int:
     settings = _settings(args)
+    if args.demo:  # never mix simulated positions into the real state store
+        settings = settings.model_copy(update={"data_dir": settings.data_dir / "demo"})
     setup_logging(settings.log_file)
     problems = check_mode_safety(settings)
     if problems and not args.demo:

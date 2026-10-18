@@ -721,3 +721,16 @@ def test_audit_log_update_error_is_integrity_error(env):
 def test_dropping_a_key_helper_sanity():
     # guards the test helper itself: DROP really removes keys
     assert "valid_until:" not in build(TRADE, valid_until=DROP)
+
+
+@pytest.mark.parametrize(
+    ("mode", "port", "unsafe"),
+    [("paper", 4003, True), ("paper", 4004, False), ("live", 4004, True), ("live", 4003, False)],
+)
+def test_mode_safety_knows_compose_relay_ports(mode, port, unsafe):
+    from ibtrader.config import Settings, check_mode_safety
+
+    problems = check_mode_safety(
+        Settings(mode=mode, ib_port=port, ib_account="U123" if mode == "live" else "")
+    )
+    assert bool(problems) is unsafe

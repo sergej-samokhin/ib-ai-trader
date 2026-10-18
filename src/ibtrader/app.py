@@ -36,6 +36,7 @@ log = logging.getLogger("ibtrader.app")
 _SIGNAL = TypeAdapter(Signal)
 FeedbackSink = Callable[[str, dict], None]
 BODY_PREVIEW_CHARS = 1500
+EXIT_RETRY_BACKOFF_SECONDS = 300
 
 
 class Trader:
@@ -114,7 +115,8 @@ class Trader:
             total += risk
             by_producer[pos["producer"]] = by_producer.get(pos["producer"], 0.0) + risk
             by_underlying[pos["underlying"]] = by_underlying.get(pos["underlying"], 0.0) + risk
-        for intent in self.store.intents_with_status(*OPEN_INTENT_STATUSES):
+        # `unknown` entries may have filled at the broker: count them as risk until reconciled.
+        for intent in self.store.intents_with_status(*OPEN_INTENT_STATUSES, "unknown"):
             if intent["kind"] != "entry" or bool(intent["shadow"]) != shadow:
                 continue
             risk = (intent["max_price"] or 0.0) * 100 * intent["quantity"]
@@ -407,6 +409,9 @@ class Trader:
         today = ny_date(now)
         for pos in self.store.open_positions():
             if self.store.open_intents_for_position(pos["id"]):
+                continue
+            failed_at = self.store.last_failed_exit_at(pos["id"])
+            if failed_at and (now - failed_at).total_seconds() < EXIT_RETRY_BACKOFF_SECONDS:
                 continue
             quotes = self.md.quote_legs(legs_from_json(pos["legs"]))
             reason, pnl_pct = exit_reason(pos, quotes, today)

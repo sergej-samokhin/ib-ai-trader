@@ -12,8 +12,9 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-PAPER_PORTS = {4002, 7497}
-LIVE_PORTS = {4001, 7496}
+# Gateway / TWS defaults, plus the paper/live relay ports of the compose gateway image.
+PAPER_PORTS = {4002, 7497, 4004}
+LIVE_PORTS = {4001, 7496, 4003}
 
 
 class RiskLimits(BaseModel):
